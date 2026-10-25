@@ -1,4 +1,4 @@
-const API_BASE = '';
+const API_BASE = 'https://yummy-foodhub-webapp.onrender.com';
 
 const state = {
   user: readStorage('yummy-user'),
