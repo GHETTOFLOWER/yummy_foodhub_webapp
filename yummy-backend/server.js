@@ -1,13 +1,3 @@
-// ============================================================
-// Yummy Food Hub — Backend Server
-// API routes and MySQL access live here; the browser client is served from yummy-web/.
-// ============================================================
-// HOW TO RUN THIS FILE:
-//   1) npm install
-//   2) Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, and DB_PORT as needed
-//   3) npm start
-// ============================================================
-
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
@@ -16,11 +6,11 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
 const DB_CONFIG = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'yummy_food_hub',
-  port: Number(process.env.DB_PORT || 3307)
+  host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
+  user: process.env.DB_USER || 'sql7839427',
+  password: process.env.DB_PASSWORD || 'p1mf1WJAyC',
+  database: process.env.DB_NAME || 'sql7839427',
+  port: Number(process.env.DB_PORT || 3306)
 };
 const PORT = Number(process.env.PORT || 3107);
 
