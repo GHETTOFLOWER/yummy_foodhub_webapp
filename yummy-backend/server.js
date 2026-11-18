@@ -6,7 +6,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
 const DB_CONFIG = {
-  host: process.env.DB_HOST || 'sql.freesqldatabase.com',
+  host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
   user: process.env.DB_USER || 'sql7839427',
   password: process.env.DB_PASSWORD || 'p1mf1WJAyC',
   database: process.env.DB_NAME || 'sql7839427',
