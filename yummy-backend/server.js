@@ -10,27 +10,443 @@ const DB_CONFIG = {
   user: process.env.DB_USER || 'sql7839427',
   password: process.env.DB_PASSWORD || 'p1mf1WJAyC',
   database: process.env.DB_NAME || 'sql7839427',
-  port: Number(process.env.DB_PORT || 3306)
+  port: Number(process.env.DB_PORT || 3306),
 };
 const PORT = Number(process.env.PORT || 3107);
 
 const app = express();
-app.use(cors());              // allows local development clients to talk to this server
-app.use(express.json());      // lets us read JSON sent from the app
+app.use(cors());
+app.use(express.json());
 
 const pool = mysql.createPool(DB_CONFIG);
-// Sessions are process-local and expire after 12 hours; restarting Express signs users out.
 const sessions = new Map();
+const defaultMenuSeedName = 'ugandan-dishes';
+const defaultMenuSeedVersion = 4;
+const defaultMenuDishes = [
+  {
+    title: 'Boiled Cassava & Beef-Pea Stew',
+    category: 'Traditional',
+    price: 13000,
+    description:
+      'Tender boiled cassava (muwogo) served with savory beef and green pea stew, sautéed greens, sliced avocado, and fresh tomatoes.',
+    ingredients: [
+      '2 cassava roots (muwogo)',
+      '250g beef',
+      '1/2 cup green peas (obukooli)',
+      'doodo greens',
+      '1/2 avocado',
+      '1 tomato',
+      'onion',
+      'salt',
+      'cooking oil',
+    ],
+    preparationSteps:
+      'Peel cassava, remove the tough inner core, cut into strips, and boil in salted water until soft. Boil diced beef until tender, then simmer in a fried onion-tomato gravy with green peas. Serve with sautéed greens, avocado, and fresh tomato slices.',
+    imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg',
+  },
+  {
+    title: 'Flaky Ugandan Chapati',
+    category: 'Street Food',
+    price: 3000,
+    description: 'Golden, multi-layered pan-fried Ugandan flatbread with a crisp outer layer and soft, flaky inside.',
+    ingredients: ['2 cups wheat flour', '3/4 cup warm water', '3 tbsp cooking oil', '1/2 tsp salt'],
+    preparationSteps:
+      'Mix wheat flour, salt, warm water, and 1 tbsp oil into a soft dough and rest for 20 minutes. Roll thin, brush with oil, coil into a spiral, roll flat again, and fry on a hot pan with a little oil until golden brown on both sides.',
+    imageUrl: './images/Chapati.jpeg',
+  },
+  {
+    title: 'Kalo, Cassava & Beef Stew',
+    category: 'Traditional',
+    price: 14000,
+    description:
+      'Traditional millet bread (kalo) served in a woven basket alongside boiled cassava, steamed greens, and rich beef stew.',
+    ingredients: [
+      '1 cup millet flour',
+      '1/4 cup cassava flour',
+      '1 cassava root',
+      '250g beef',
+      'doodo greens',
+      '2 tomatoes',
+      '1 carrot',
+      '1 onion',
+      'salt',
+      'oil',
+    ],
+    preparationSteps:
+      'Stir millet and cassava flour into boiling water with a wooden mingling stick until smooth and firm, then cover briefly to steam. Serve in a woven basket with boiled cassava, steamed greens, and slow-simmered beef-carrot stew.',
+    imageUrl: './images/Kalo,Cassava&Beaf Stew.jpeg',
+  },
+  {
+    title: 'Chicken Luwombo with Matooke & Sweet Potato',
+    category: 'Traditional',
+    price: 22000,
+    description:
+      'Smoky chicken steamed in banana leaves, served with mashed matooke, steamed sweet potatoes, greens, and peas.',
+    ingredients: [
+      '2 chicken pieces',
+      'banana leaves (endagala)',
+      '4 green bananas (matooke)',
+      '1 sweet potato (lumonde)',
+      '1/2 cup green peas',
+      'greens',
+      'tomatoes',
+      'onion',
+      'salt',
+    ],
+    preparationSteps:
+      'Lightly roast seasoned chicken for smoky flavor. Place on softened banana leaves with sautéed onions, tomatoes, and a little broth, tie into a bundle, and steam for 1 to 1.5 hours until tender. Serve with mashed matooke, steamed sweet potatoes, greens, and peas.',
+    imageUrl: './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg',
+  },
+  {
+    title: 'Beef Luwombo with Matooke, Lumonde & Pumpkin',
+    category: 'Traditional',
+    price: 20000,
+    description:
+      'Beef steamed in banana leaves served with mashed matooke, sweet potatoes, pumpkin, rice, greens, peas, and avocado.',
+    ingredients: [
+      '250g beef',
+      'banana leaves',
+      '3 green bananas',
+      '1 sweet potato',
+      '2 pumpkin slices (ensujju)',
+      '1/2 cup rice',
+      'peas',
+      'greens',
+      'avocado',
+      'tomatoes',
+      'onion',
+    ],
+    preparationSteps:
+      'Sear seasoned beef and wrap in softened banana leaves with onions, tomatoes, and broth; steam for 1.5 to 2 hours until tender. Steam matooke, sweet potatoes, and pumpkin wedges until soft, and serve with rice, greens, peas, and avocado.',
+    imageUrl: './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg',
+  },
+  {
+    title: 'Matooke Katogo with Beef & Butula',
+    category: 'Breakfast',
+    price: 10000,
+    description: 'Hearty one-pot matooke simmered in a rich beef and green pea gravy with a side of greens.',
+    ingredients: [
+      '5 green bananas (matooke)',
+      '200g beef',
+      '1/2 cup green peas',
+      '2 tomatoes',
+      '1 onion',
+      'carrot',
+      'greens',
+      'salt',
+      'cooking oil',
+    ],
+    preparationSteps:
+      'Boil beef pieces until tender. Sauté onions, tomatoes, and carrots in oil, then add the beef, green peas, peeled whole green bananas, and broth. Cover and simmer on medium-low heat until the matooke is soft and the sauce thickens.',
+    imageUrl: './images/Matooke Katogo with Beef and Butula.jpeg',
+  },
+  {
+    title: 'Matooke Katogo with Tilapia Fish',
+    category: 'Traditional',
+    price: 17000,
+    description:
+      'Whole peeled green bananas simmered with tilapia fish and peas, topped with greens and sliced avocado.',
+    ingredients: [
+      '5 green bananas (matooke)',
+      '1/2 tilapia fish',
+      '1/2 cup peas/beans',
+      'greens',
+      '1/2 avocado',
+      '2 tomatoes',
+      'carrot',
+      'onion',
+      'salt',
+      'oil',
+    ],
+    preparationSteps:
+      'Lightly fry seasoned tilapia pieces. Sauté onions, tomatoes, and carrots, add peeled whole matooke, peas, and broth, then place the fish gently on top and simmer covered until the matooke is tender and the gravy is rich.',
+    imageUrl: './images/Matooke Katogo with Tilapia fish.jpeg',
+  },
+  {
+    title: 'Matooke, Mayuni & Byenda',
+    category: 'Traditional',
+    price: 13000,
+    description:
+      'Tender beef tripe stew served with steamed mashed matooke, steamed cocoyam (mayuni), green peas, and greens.',
+    ingredients: [
+      '300g beef tripe (byenda)',
+      '4 green bananas',
+      '3 slices cocoyam (mayuni)',
+      '1/2 cup green peas',
+      'greens',
+      'tomatoes',
+      'onion',
+      'garlic',
+      'ginger',
+    ],
+    preparationSteps:
+      'Clean and boil tripe with garlic, ginger, and salt until tender, then simmer in a fried onion-tomato sauce. Steam matooke and cocoyam slices until tender, mash the matooke, and serve with boiled peas and sautéed greens.',
+    imageUrl: './images/Matooke,Mayuni & Byenda.jpeg',
+  },
+  {
+    title: 'Matooke, Rice & Byenda',
+    category: 'Traditional',
+    price: 12000,
+    description: 'Steamed mashed matooke and fluffy white rice served with rich beef tripe stew.',
+    ingredients: [
+      '300g beef tripe (byenda)',
+      '4 green bananas',
+      '1 cup rice',
+      '2 tomatoes',
+      '1 onion',
+      'carrot',
+      'green pepper',
+      'garlic',
+      'ginger',
+      'salt',
+    ],
+    preparationSteps:
+      'Boil cleaned tripe with ginger and garlic until tender. Sauté onions, tomatoes, carrots, and green pepper, add the tripe and broth, and simmer until thick. Serve with steamed mashed matooke and boiled rice.',
+    imageUrl: './images/Matooke,Rice&Byenda.jpeg',
+  },
+  {
+    title: 'Matooke, Mayuni & Fish Stew',
+    category: 'Traditional',
+    price: 18000,
+    description:
+      'Steamed mashed matooke and cocoyam (mayuni) paired with tilapia fish stew, peas, greens, and avocado.',
+    ingredients: [
+      '1/2 tilapia fish',
+      '4 green bananas',
+      '2 slices cocoyam (mayuni)',
+      '1/2 cup green peas',
+      'greens',
+      '1/2 avocado',
+      'tomatoes',
+      'carrot',
+      'onion',
+    ],
+    preparationSteps:
+      'Wrap peeled matooke and cocoyam in banana leaves and steam until tender, mashing the matooke. Lightly fry seasoned tilapia and simmer in a tomato-carrot gravy. Serve with peas, greens, and sliced avocado.',
+    imageUrl: './images/MatookeMayuuni and Fish Stew.jpeg',
+  },
+  {
+    title: 'Posho & Tilapia Fish Stew with Greens',
+    category: 'Mains',
+    price: 16000,
+    description: 'Tilapia fish simmered in a rich vegetable gravy, served with firm posho and sautéed greens.',
+    ingredients: [
+      '1/2 tilapia fish',
+      '1.5 cups maize flour',
+      'greens',
+      '2 tomatoes',
+      '1 carrot',
+      'green pepper',
+      'onion',
+      'salt',
+      'cooking oil',
+    ],
+    preparationSteps:
+      'Lightly fry seasoned tilapia pieces, then simmer in a fried onion, tomato, carrot, and green pepper gravy. Stir maize flour into boiling water until firm and smooth, then serve hot with sautéed greens.',
+    imageUrl: './images/Posho& Tilapia Fish Stew with Greens.jpeg',
+  },
+  {
+    title: 'Posho, Beans & Okra Stew with Doodo',
+    category: 'Lunch',
+    price: 7000,
+    description: 'Firm posho served with spiced beans and okra stew alongside fresh sautéed doodo greens.',
+    ingredients: [
+      '1.5 cups maize flour',
+      '1 cup beans',
+      '4 okra pods',
+      '1 bunch doodo greens',
+      '2 tomatoes',
+      '1 onion',
+      'salt',
+      'cooking oil',
+    ],
+    preparationSteps:
+      'Boil beans until soft, then simmer with fried onions, tomatoes, and sliced okra until thick. Stir maize flour into boiling water until firm and smooth, and serve with quick-sautéed doodo greens.',
+    imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg',
+  },
+  {
+    title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice',
+    category: 'Mains',
+    price: 19000,
+    description:
+      'Whole tilapia in vegetable gravy served with steamed white rice, greens, and a glass of fresh fruit juice.',
+    ingredients: [
+      '1 tilapia fish',
+      '1 cup rice',
+      'greens',
+      '2 tomatoes',
+      '1 carrot',
+      'onion',
+      'fresh fruit for juice',
+      'sugar',
+      'water',
+      'salt',
+      'oil',
+    ],
+    preparationSteps:
+      'Fry and simmer whole scored tilapia in a spiced tomato-carrot sauce. Steam rinsed rice until fluffy, sauté greens, and blend fresh ripe fruit with water and a touch of sugar, straining before serving chilled.',
+    imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg',
+  },
+  {
+    title: 'Whole Fried Tilapia and Chips',
+    category: 'Mains',
+    price: 25000,
+    description:
+      'Crispy deep-fried whole tilapia served with golden chips, stir-fried vegetables, and fresh lime slices.',
+    ingredients: [
+      '1 whole tilapia',
+      '3 Irish potatoes',
+      '1 carrot',
+      '1 onion',
+      'green pepper',
+      '1 lime',
+      'garlic',
+      'ginger',
+      'salt',
+      'cooking oil',
+    ],
+    preparationSteps:
+      'Clean and score the whole tilapia, rub with salt, garlic, ginger, and lime juice, and deep-fry until crispy and golden. Cut potatoes into strips and fry until golden. Serve with lightly stir-fried veggies and lime wedges.',
+    imageUrl: './images/Whole Fried Tilapia and Chips.jpeg',
+  },
+];
+
+function getDefaultMenuRows(rows) {
+  const allowedTitles = new Set(defaultMenuDishes.map((dish) => dish.title));
+  const dishesByTitle = new Map();
+  for (const row of rows) {
+    if (row.listing_type === 'business' && allowedTitles.has(row.title) && !dishesByTitle.has(row.title)) {
+      dishesByTitle.set(row.title, row);
+    }
+  }
+  const menu = defaultMenuDishes.map((dish) => dishesByTitle.get(dish.title)).filter(Boolean);
+  if (menu.length !== defaultMenuDishes.length) {
+    throw new Error(`The default menu seed is incomplete (${menu.length}/${defaultMenuDishes.length} dishes)`);
+  }
+  return menu;
+}
+
+async function removeDishIfUnordered(connection, menuItemId) {
+  const [[orderItem]] = await connection.query('SELECT id FROM order_items WHERE item_id = ? LIMIT 1', [menuItemId]);
+  if (orderItem) return;
+  await connection.query('DELETE FROM recipe_ingredients WHERE menu_item_id = ?', [menuItemId]);
+  await connection.query('DELETE FROM menu_items WHERE id = ?', [menuItemId]);
+}
 
 async function ensureMenuImageColumn() {
   try {
-    await pool.query('ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS image_url TEXT NULL');
+    const [columns] = await pool.query("SHOW COLUMNS FROM menu_items LIKE 'image_url'");
+    if (columns.length === 0) {
+      await pool.query('ALTER TABLE menu_items ADD COLUMN image_url TEXT NULL');
+    }
   } catch (err) {
     console.warn('IMAGE COLUMN CHECK WARNING:', err.message);
   }
 }
 
-ensureMenuImageColumn();
+async function seedDefaultMenu() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS app_seed_versions (
+      seed_name VARCHAR(80) PRIMARY KEY,
+      version INT NOT NULL
+    ) ENGINE=InnoDB`,
+  );
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query('INSERT IGNORE INTO app_seed_versions (seed_name, version) VALUES (?, 0)', [
+      defaultMenuSeedName,
+    ]);
+    const [[seedState]] = await connection.query(
+      'SELECT version FROM app_seed_versions WHERE seed_name = ? FOR UPDATE',
+      [defaultMenuSeedName],
+    );
+    if (Number(seedState.version) >= defaultMenuSeedVersion) {
+      await connection.commit();
+      return;
+    }
+
+    for (const dish of defaultMenuDishes) {
+      const [[existing]] = await connection.query(
+        'SELECT id FROM menu_items WHERE title = ? AND listing_type = ? ORDER BY id LIMIT 1',
+        [dish.title, 'business'],
+      );
+      let menuItemId = existing && existing.id;
+      if (menuItemId) {
+        await connection.query(
+          `UPDATE menu_items
+           SET description = ?, preparation_steps = ?, category = ?, price = ?,
+               stock_quantity = ?, image_url = ?
+           WHERE id = ?`,
+          [dish.description, dish.preparationSteps, dish.category, dish.price, 10, dish.imageUrl, menuItemId],
+        );
+        await connection.query('DELETE FROM recipe_ingredients WHERE menu_item_id = ?', [menuItemId]);
+      } else {
+        const [result] = await connection.query(
+          `INSERT INTO menu_items
+           (title, description, preparation_steps, category, price, stock_quantity,
+            listing_type, creator_user_id, seller_user_id, image_url)
+           VALUES (?, ?, ?, ?, ?, ?, 'business', NULL, NULL, ?)`,
+          [dish.title, dish.description, dish.preparationSteps, dish.category, dish.price, 10, dish.imageUrl],
+        );
+        menuItemId = result.insertId;
+      }
+      for (const ingredient of dish.ingredients) {
+        await connection.query('INSERT INTO recipe_ingredients (menu_item_id, ingredient_name) VALUES (?, ?)', [
+          menuItemId,
+          ingredient,
+        ]);
+      }
+
+      const [duplicates] = await connection.query(
+        'SELECT id FROM menu_items WHERE title = ? AND listing_type = ? ORDER BY id',
+        [dish.title, 'business'],
+      );
+      for (const duplicate of duplicates.slice(1)) {
+        await removeDishIfUnordered(connection, duplicate.id);
+      }
+    }
+
+    const defaultTitles = defaultMenuDishes.map((dish) => dish.title);
+    const defaultTitlePlaceholders = defaultTitles.map(() => '?').join(', ');
+    const [obsoleteRows] = await connection.query(
+      `SELECT id FROM menu_items
+       WHERE COALESCE(listing_type, '') <> 'business'
+          OR title IS NULL
+          OR title NOT IN (${defaultTitlePlaceholders})`,
+      defaultTitles,
+    );
+    for (const row of obsoleteRows) {
+      await removeDishIfUnordered(connection, row.id);
+    }
+
+    await connection.query('UPDATE app_seed_versions SET version = ? WHERE seed_name = ?', [
+      defaultMenuSeedVersion,
+      defaultMenuSeedName,
+    ]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+let menuSeedPromise;
+function ensureDefaultMenuSeeded() {
+  if (!menuSeedPromise) {
+    menuSeedPromise = ensureMenuImageColumn()
+      .then(seedDefaultMenu)
+      .catch((error) => {
+        menuSeedPromise = null;
+        throw error;
+      });
+  }
+  return menuSeedPromise;
+}
+
+ensureDefaultMenuSeeded().catch((error) => console.error('MENU SEED ERROR:', error.message));
 
 function requireAuth(req, res, next) {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -43,7 +459,6 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Apply authorization to the role stored in the authenticated server session.
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -62,7 +477,7 @@ async function attachIngredients(menuItems) {
     `SELECT menu_item_id, ingredient_name, quantity_text
      FROM recipe_ingredients WHERE menu_item_id IN (${placeholders})
      ORDER BY menu_item_id, ingredient_name`,
-    itemIds
+    itemIds,
   );
   const ingredientsByItem = new Map(itemIds.map((id) => [id, []]));
   for (const ingredient of ingredients) {
@@ -82,14 +497,72 @@ async function attachOrderItems(orders) {
        LEFT JOIN users seller ON seller.id = oi.seller_user_id
        LEFT JOIN users creator ON creator.id = mi.creator_user_id
        WHERE oi.order_id = ? ORDER BY oi.id`,
-      [order.id]
+      [order.id],
     );
     order.items = items;
   }
   return orders;
 }
 
-// Keep the parent order pending while any dish still needs a seller/admin decision.
+function normalizeDish(body) {
+  const ingredients = Array.isArray(body.ingredients)
+    ? [...new Set(body.ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
+    : [];
+  const dish = {
+    title: String(body.title || '').trim(),
+    description: String(body.description || '')
+      .trim()
+      .slice(0, 500),
+    preparationSteps: String(body.preparation_steps || '').trim(),
+    category: String(body.category || '').trim(),
+    price: Number(body.price),
+    stock: Number(body.stock_quantity),
+    ingredients,
+    imageUrl: typeof body.image_url === 'string' ? body.image_url.trim() : '',
+  };
+  const valid =
+    dish.title &&
+    dish.preparationSteps &&
+    dish.preparationSteps.length <= 4000 &&
+    dish.category &&
+    Number.isFinite(dish.price) &&
+    dish.price >= 1000 &&
+    Number.isInteger(dish.stock) &&
+    dish.stock >= 0 &&
+    dish.ingredients.length > 0 &&
+    dish.ingredients.length <= 40 &&
+    dish.imageUrl.length <= 200000;
+  return { dish, valid, imageTooLarge: dish.imageUrl.length > 200000 };
+}
+
+async function insertDish(connection, dish, listingType, creatorId) {
+  const sellerId = listingType === 'community' ? creatorId : null;
+  const [result] = await connection.query(
+    `INSERT INTO menu_items
+     (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id, image_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      dish.title,
+      dish.description,
+      dish.preparationSteps,
+      dish.category,
+      dish.price,
+      dish.stock,
+      listingType,
+      creatorId,
+      sellerId,
+      dish.imageUrl || null,
+    ],
+  );
+  for (const ingredient of dish.ingredients) {
+    await connection.query('INSERT INTO recipe_ingredients (menu_item_id, ingredient_name) VALUES (?, ?)', [
+      result.insertId,
+      ingredient.slice(0, 160),
+    ]);
+  }
+  return result.insertId;
+}
+
 async function refreshOrderStatus(connection, orderId) {
   const [rows] = await connection.query('SELECT status FROM order_items WHERE order_id = ?', [orderId]);
   const statuses = rows.map((row) => row.status);
@@ -109,14 +582,13 @@ async function refreshOrderStatus(connection, orderId) {
   return status;
 }
 
-// Lock the line and its stock row together so concurrent approvals cannot oversell a dish.
 async function setOrderLineStatus(connection, lineId, status, user) {
   const [rows] = await connection.query(
     `SELECT oi.id, oi.order_id, oi.item_id, oi.quantity, oi.price, oi.status, oi.seller_user_id,
        mi.stock_quantity
      FROM order_items oi JOIN menu_items mi ON mi.id = oi.item_id
      WHERE oi.id = ? FOR UPDATE`,
-    [lineId]
+    [lineId],
   );
   if (rows.length === 0) {
     const error = new Error('Order item not found');
@@ -139,21 +611,20 @@ async function setOrderLineStatus(connection, lineId, status, user) {
       throw error;
     }
     const lineTotal = Number(line.price) * Number(line.quantity);
-    // Commission and seller earnings are booked only when this user-owned dish is approved.
-    const commission = line.seller_user_id ? Math.round(lineTotal * 0.10) : 0;
+    const commission = line.seller_user_id ? Math.round(lineTotal * 0.1) : 0;
     const sellerAmount = line.seller_user_id ? lineTotal - commission : 0;
-    await connection.query(
-      'UPDATE menu_items SET stock_quantity = stock_quantity - ? WHERE id = ?',
-      [line.quantity, line.item_id]
-    );
+    await connection.query('UPDATE menu_items SET stock_quantity = stock_quantity - ? WHERE id = ?', [
+      line.quantity,
+      line.item_id,
+    ]);
     await connection.query(
       `UPDATE order_items SET status = 'approved', commission_amount = ?, seller_amount = ? WHERE id = ?`,
-      [commission, sellerAmount, line.id]
+      [commission, sellerAmount, line.id],
     );
   } else if (status === 'rejected' && line.status === 'pending') {
     await connection.query(
       `UPDATE order_items SET status = 'rejected', commission_amount = 0, seller_amount = 0 WHERE id = ?`,
-      [line.id]
+      [line.id],
     );
   } else if (status === 'completed' && line.status === 'approved') {
     await connection.query('UPDATE order_items SET status = ? WHERE id = ?', [status, line.id]);
@@ -167,18 +638,9 @@ async function setOrderLineStatus(connection, lineId, status, user) {
   return { orderId: line.order_id, lineId: line.id, itemStatus: status, orderStatus };
 }
 
-// Prints every request in this terminal — handy for seeing what's happening
-app.use((req, res, next) => {
-  console.log(req.method, req.url);
-  next();
-});
-
-// TEST ROUTE  http://localhost:3107/api/health
-
 app.get('/api/health', (req, res) => {
   res.json({ message: 'Yummy Food Hub API is running' });
 });
-
 
 app.post('/register', async (req, res) => {
   try {
@@ -189,17 +651,18 @@ app.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const userRole = 'customer';
 
-    const [result] = await pool.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [name, email, passwordHash, userRole]
-    );
+    const [result] = await pool.query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)', [
+      name,
+      email,
+      passwordHash,
+      userRole,
+    ]);
     res.json({ id: result.insertId, name, email, role: userRole });
   } catch (err) {
     console.error('REGISTER ERROR:', err.message);
     res.status(500).json({ error: 'Registration failed: ' + err.message });
   }
 });
-
 
 app.post('/login', async (req, res) => {
   try {
@@ -231,60 +694,38 @@ app.post('/logout', requireAuth, (req, res) => {
 
 app.get('/menu', async (req, res) => {
   try {
+    await ensureDefaultMenuSeeded();
     const [rows] = await pool.query(
       `SELECT mi.*, seller.name AS seller_name, creator.name AS creator_name,
          creator.role AS creator_role
        FROM menu_items mi
        LEFT JOIN users seller ON seller.id = mi.seller_user_id
        LEFT JOIN users creator ON creator.id = mi.creator_user_id
-       ORDER BY mi.category, mi.title`
+       ORDER BY mi.category, mi.title, mi.id`,
     );
-    res.json(await attachIngredients(rows));
+    res.json(await attachIngredients(getDefaultMenuRows(rows)));
   } catch (err) {
     console.error('MENU ERROR:', err.message);
     res.status(500).json({ error: 'Could not load menu: ' + err.message });
   }
 });
 
-
 app.post('/recipes', requireAuth, async (req, res) => {
-  const userId = req.user.id;
-  const { title, description, preparation_steps, category, price, stock_quantity, ingredients, image_url } = req.body;
-  const cleanTitle = String(title || '').trim();
-  const cleanPreparationSteps = String(preparation_steps || '').trim();
-  const cleanIngredients = Array.isArray(ingredients)
-    ? [...new Set(ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
-    : [];
-  const normalizedImageUrl = typeof image_url === 'string' ? image_url.trim() : '';
-  const numericPrice = Number(price);
-  const stock = Number(stock_quantity);
-
-  if (!userId || !cleanTitle || !cleanPreparationSteps || cleanPreparationSteps.length > 4000
-    || !category || !Number.isFinite(numericPrice) || numericPrice < 1000
-    || !Number.isInteger(stock) || stock < 0 || cleanIngredients.length === 0 || cleanIngredients.length > 40) {
-    return res.status(400).json({ error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients' });
-  }
-  if (normalizedImageUrl && normalizedImageUrl.length > 200000) {
+  const { dish, valid, imageTooLarge } = normalizeDish(req.body);
+  if (imageTooLarge) {
     return res.status(400).json({ error: 'Image is too large. Please choose a smaller photo.' });
   }
-
+  if (!valid) {
+    return res.status(400).json({
+      error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients',
+    });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [result] = await connection.query(
-      `INSERT INTO menu_items
-       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, 'community', ?, ?, ?)`,
-      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, userId, userId, normalizedImageUrl || null]
-    );
-    for (const ingredient of cleanIngredients) {
-      await connection.query(
-        'INSERT INTO recipe_ingredients (menu_item_id, ingredient_name) VALUES (?, ?)',
-        [result.insertId, ingredient.slice(0, 160)]
-      );
-    }
+    const id = await insertDish(connection, dish, 'community', req.user.id);
     await connection.commit();
-    res.status(201).json({ id: result.insertId, title: cleanTitle, stock_quantity: stock });
+    res.status(201).json({ id, title: dish.title, stock_quantity: dish.stock });
   } catch (err) {
     await connection.rollback();
     console.error('PUBLISH RECIPE ERROR:', err.message);
@@ -297,43 +738,22 @@ app.post('/recipes', requireAuth, async (req, res) => {
   }
 });
 
-// House dishes record their staff/admin creator but deliberately have no seller payout owner.
 app.post('/staff/menu', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
-  const { title, description, preparation_steps, category, price, stock_quantity, ingredients, image_url } = req.body;
-  const cleanTitle = String(title || '').trim();
-  const cleanPreparationSteps = String(preparation_steps || '').trim();
-  const cleanIngredients = Array.isArray(ingredients)
-    ? [...new Set(ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
-    : [];
-  const normalizedImageUrl = typeof image_url === 'string' ? image_url.trim() : '';
-  const numericPrice = Number(price);
-  const stock = Number(stock_quantity);
-  if (!cleanTitle || !cleanPreparationSteps || cleanPreparationSteps.length > 4000
-    || !category || !Number.isFinite(numericPrice) || numericPrice < 1000
-    || !Number.isInteger(stock) || stock < 0 || cleanIngredients.length === 0 || cleanIngredients.length > 40) {
-    return res.status(400).json({ error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients' });
-  }
-  if (normalizedImageUrl && normalizedImageUrl.length > 200000) {
+  const { dish, valid, imageTooLarge } = normalizeDish(req.body);
+  if (imageTooLarge) {
     return res.status(400).json({ error: 'Image is too large. Please choose a smaller photo.' });
   }
-
+  if (!valid) {
+    return res.status(400).json({
+      error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients',
+    });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [result] = await connection.query(
-      `INSERT INTO menu_items
-       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, 'business', ?, NULL, ?)`,
-      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, req.user.id, normalizedImageUrl || null]
-    );
-    for (const ingredient of cleanIngredients) {
-      await connection.query(
-        'INSERT INTO recipe_ingredients (menu_item_id, ingredient_name) VALUES (?, ?)',
-        [result.insertId, ingredient.slice(0, 160)]
-      );
-    }
+    const id = await insertDish(connection, dish, 'business', req.user.id);
     await connection.commit();
-    res.status(201).json({ id: result.insertId, title: cleanTitle, listing_type: 'business', stock_quantity: stock });
+    res.status(201).json({ id, title: dish.title, listing_type: 'business', stock_quantity: dish.stock });
   } catch (err) {
     await connection.rollback();
     console.error('PUBLISH HOUSE DISH ERROR:', err.message);
@@ -348,10 +768,9 @@ app.get('/recipes/user/:userId', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'You can only manage your own dishes' });
   }
   try {
-    const [rows] = await pool.query(
-      'SELECT * FROM menu_items WHERE seller_user_id = ? ORDER BY title',
-      [req.params.userId]
-    );
+    const [rows] = await pool.query('SELECT * FROM menu_items WHERE seller_user_id = ? ORDER BY title', [
+      req.params.userId,
+    ]);
     res.json(await attachIngredients(rows));
   } catch (err) {
     console.error('MY RECIPES ERROR:', err.message);
@@ -359,7 +778,6 @@ app.get('/recipes/user/:userId', requireAuth, async (req, res) => {
   }
 });
 
-// PLACE ORDER — each available line auto-approves; unavailable lines stay pending without reserving stock.
 app.post('/order', requireAuth, async (req, res) => {
   const userId = req.user.id;
   const { items } = req.body;
@@ -387,7 +805,7 @@ app.post('/order', requireAuth, async (req, res) => {
     for (const line of orderLines) {
       const [rows] = await connection.query(
         'SELECT price, stock_quantity, seller_user_id FROM menu_items WHERE id = ? FOR UPDATE',
-        [line.itemId]
+        [line.itemId],
       );
       if (rows.length === 0) {
         const error = new Error('Item not found: ' + line.itemId);
@@ -399,19 +817,15 @@ app.post('/order', requireAuth, async (req, res) => {
       line.price = Number(item.price);
       line.sellerUserId = item.seller_user_id;
       line.status = Number(item.stock_quantity) >= line.quantity ? 'approved' : 'pending';
-      line.commissionAmount = line.sellerUserId && line.status === 'approved'
-        ? Math.round(lineTotal * 0.05)
-        : 0;
-      line.sellerAmount = line.sellerUserId && line.status === 'approved'
-        ? lineTotal - line.commissionAmount
-        : 0;
+      line.commissionAmount = line.sellerUserId && line.status === 'approved' ? Math.round(lineTotal * 0.05) : 0;
+      line.sellerAmount = line.sellerUserId && line.status === 'approved' ? lineTotal - line.commissionAmount : 0;
       total += lineTotal;
     }
 
     const status = orderLines.some((line) => line.status === 'pending') ? 'pending' : 'approved';
     const [orderResult] = await connection.query(
       'INSERT INTO orders (user_id, status, total_amount) VALUES (?, ?, ?)',
-      [userId, status, total]
+      [userId, status, total],
     );
     const orderId = orderResult.insertId;
 
@@ -420,13 +834,22 @@ app.post('/order', requireAuth, async (req, res) => {
         `INSERT INTO order_items
          (order_id, item_id, quantity, price, seller_user_id, status, commission_amount, seller_amount)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [orderId, line.itemId, line.quantity, line.price, line.sellerUserId, line.status, line.commissionAmount, line.sellerAmount]
+        [
+          orderId,
+          line.itemId,
+          line.quantity,
+          line.price,
+          line.sellerUserId,
+          line.status,
+          line.commissionAmount,
+          line.sellerAmount,
+        ],
       );
       if (line.status === 'approved') {
-        await connection.query(
-          'UPDATE menu_items SET stock_quantity = stock_quantity - ? WHERE id = ?',
-          [line.quantity, line.itemId]
-        );
+        await connection.query('UPDATE menu_items SET stock_quantity = stock_quantity - ? WHERE id = ?', [
+          line.quantity,
+          line.itemId,
+        ]);
       }
     }
 
@@ -442,17 +865,14 @@ app.post('/order', requireAuth, async (req, res) => {
   }
 });
 
-// order history for one customer
-
 app.get('/orders/:userId', requireAuth, async (req, res) => {
   if (Number(req.params.userId) !== Number(req.user.id)) {
     return res.status(403).json({ error: 'You can only view your own orders' });
   }
   try {
-    const [orders] = await pool.query(
-      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
-      [req.params.userId]
-    );
+    const [orders] = await pool.query('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', [
+      req.params.userId,
+    ]);
     res.json(await attachOrderItems(orders));
   } catch (err) {
     console.error('ORDERS ERROR:', err.message);
@@ -460,7 +880,6 @@ app.get('/orders/:userId', requireAuth, async (req, res) => {
   }
 });
 
-// Seller views are always scoped to the authenticated creator ID.
 app.get('/seller/orders', requireAuth, async (req, res) => {
   try {
     const [lines] = await pool.query(
@@ -474,7 +893,7 @@ app.get('/seller/orders', requireAuth, async (req, res) => {
        JOIN menu_items mi ON mi.id = oi.item_id
        WHERE oi.seller_user_id = ?
        ORDER BY o.created_at DESC, oi.id`,
-      [req.user.id]
+      [req.user.id],
     );
     res.json(lines);
   } catch (err) {
@@ -489,7 +908,7 @@ app.get('/seller/dashboard', requireAuth, async (req, res) => {
       `SELECT COUNT(*) AS total_dishes,
          COALESCE(SUM(stock_quantity > 0), 0) AS available_dishes
        FROM menu_items WHERE seller_user_id = ?`,
-      [req.user.id]
+      [req.user.id],
     );
     const [[sales]] = await pool.query(
       `SELECT COUNT(DISTINCT order_id) AS orders_received,
@@ -498,7 +917,7 @@ app.get('/seller/dashboard', requireAuth, async (req, res) => {
          COALESCE(SUM(commission_amount), 0) AS commission,
          COALESCE(SUM(seller_amount), 0) AS seller_earnings
        FROM order_items WHERE seller_user_id = ?`,
-      [req.user.id]
+      [req.user.id],
     );
     res.json({ summary: { ...listings, ...sales } });
   } catch (err) {
@@ -507,13 +926,12 @@ app.get('/seller/dashboard', requireAuth, async (req, res) => {
   }
 });
 
-// STAFF ORDERS — pending orders appear first in the staff queue.
 app.get('/staff/orders', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   try {
     const [orders] = await pool.query(
       `SELECT o.*, u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
-       ORDER BY (o.status = 'pending') DESC, o.created_at DESC`
+       ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
     );
     res.json(await attachOrderItems(orders));
   } catch (err) {
@@ -522,7 +940,6 @@ app.get('/staff/orders', requireAuth, requireRole('admin', 'staff'), async (req,
   }
 });
 
-// Sales and commission totals are derived from approved dish lines, not pending requests.
 app.get('/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const [[sales]] = await pool.query(
@@ -531,17 +948,17 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) 
          COUNT(DISTINCT CASE WHEN status IN ('approved', 'completed') THEN order_id END) AS approved_orders,
          COALESCE(SUM(CASE WHEN status IN ('approved', 'completed') THEN price * quantity ELSE 0 END), 0) AS total_sales,
          COALESCE(SUM(commission_amount), 0) AS total_commission
-       FROM order_items`
+       FROM order_items`,
     );
     const [[listings]] = await pool.query(
       `SELECT COUNT(*) AS total_dishes,
          COALESCE(SUM(stock_quantity > 0), 0) AS available_dishes
-       FROM menu_items`
+       FROM menu_items`,
     );
     const [recentOrders] = await pool.query(
       `SELECT o.*, u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
-       ORDER BY o.created_at DESC LIMIT 8`
+       ORDER BY o.created_at DESC LIMIT 8`,
     );
     res.json({
       summary: { ...sales, ...listings },
@@ -553,27 +970,24 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) 
   }
 });
 
-// ============================================================
-// INVENTORY — staff/admin screens
-// ============================================================
 app.get('/inventory', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   try {
+    await ensureDefaultMenuSeeded();
     const [rows] = await pool.query(
       `SELECT mi.*, creator.name AS creator_name, creator.role AS creator_role,
          seller.name AS seller_name
        FROM menu_items mi
        LEFT JOIN users creator ON creator.id = mi.creator_user_id
        LEFT JOIN users seller ON seller.id = mi.seller_user_id
-       ORDER BY mi.listing_type, mi.category, mi.title`
+       ORDER BY mi.id`,
     );
-    res.json(rows);
+    res.json(getDefaultMenuRows(rows));
   } catch (err) {
     console.error('INVENTORY ERROR:', err.message);
     res.status(500).json({ error: 'Could not load inventory: ' + err.message });
   }
 });
 
-// Dish owners may change their own stock; staff/admin can manage any dish.
 app.put('/inventory/:id', requireAuth, async (req, res) => {
   try {
     const { stock_quantity } = req.body;
@@ -596,7 +1010,6 @@ app.put('/inventory/:id', requireAuth, async (req, res) => {
   }
 });
 
-// Sellers can decide only on their own lines; admins/staff may manage any line.
 app.put('/seller/order-items/:lineId/status', requireAuth, async (req, res) => {
   const { status } = req.body;
   if (!['approved', 'rejected', 'completed'].includes(status)) {
@@ -618,7 +1031,6 @@ app.put('/seller/order-items/:lineId/status', requireAuth, async (req, res) => {
   }
 });
 
-// Admin/staff can update all eligible dish lines in a whole order.
 app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const { status } = req.body;
   if (!['approved', 'rejected', 'completed'].includes(status)) {
@@ -635,7 +1047,7 @@ app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async 
     }
     const [lines] = await connection.query(
       'SELECT id, status FROM order_items WHERE order_id = ? ORDER BY id FOR UPDATE',
-      [req.params.id]
+      [req.params.id],
     );
     const actionableStatus = status === 'completed' ? 'approved' : 'pending';
     for (const line of lines.filter((orderLine) => orderLine.status === actionableStatus)) {
@@ -653,7 +1065,6 @@ app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async 
   }
 });
 
-// Serve the browser app from the same origin as the REST API.
 app.use(express.static(path.join(__dirname, '..', 'yummy-web')));
 
 app.listen(PORT, '0.0.0.0', () => {

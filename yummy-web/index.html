@@ -1,32 +1,42 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f7f5ed">
-    <meta name="description" content="Order fresh, feel-good food from Yummy Food Hub.">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f5ed" />
+    <meta name="description" content="Order fresh, feel-good food from Yummy Food Hub." />
     <title>Yummy Food Hub | Good food, good mood</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
     <script src="app.js" defer></script>
   </head>
   <body>
-    <!-- Public entry: customer registration and customer/staff sign-in. -->
     <main id="auth-view" class="auth-layout">
       <section class="auth-story" aria-label="Yummy Food Hub">
-        <div class="brand brand-light"><span class="brand-mark" aria-hidden="true"><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span><span>Yummy<span class="brand-muted">Food Hub</span></span></div>
+        <div class="brand brand-light">
+          <span class="brand-mark" aria-hidden="true"
+            ><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span
+          ><span>Yummy<span class="brand-muted">Food Hub</span></span>
+        </div>
         <div class="story-copy">
           <p class="eyebrow">MADE FRESH, JUST FOR YOU</p>
-          <h1>Good food.<br><em>Good mood.</em></h1>
+          <h1>Good food.<br /><em>Good mood.</em></h1>
           <p>Find your next favorite, made with care and served up without the fuss.</p>
         </div>
         <div class="story-note"><span class="note-dot"></span> A little something delicious is waiting.</div>
         <div class="story-photo" role="img" aria-label="Freshly prepared meal"></div>
       </section>
       <section class="auth-panel">
-        <div class="auth-mobile-brand brand"><span class="brand-mark" aria-hidden="true"><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span><span>Yummy<span class="brand-muted">Food Hub</span></span></div>
+        <div class="auth-mobile-brand brand">
+          <span class="brand-mark" aria-hidden="true"
+            ><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span
+          ><span>Yummy<span class="brand-muted">Food Hub</span></span>
+        </div>
         <div class="auth-card">
           <div class="auth-mode-toggle" role="group" aria-label="Choose sign-in type">
             <button class="active" type="button" data-auth-mode="customer" aria-pressed="true">Customer</button>
@@ -36,56 +46,110 @@
           <h2 id="auth-title">Come on in.</h2>
           <p class="auth-intro" id="auth-intro">Sign in to pick up where your appetite left off.</p>
           <form id="auth-form" novalidate>
-            <label id="name-field" class="field hidden">Your name<input name="name" autocomplete="name" placeholder="e.g. Jamie Parker"></label>
-            <label class="field">Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
-            <label class="field">Password<input name="password" type="password" autocomplete="current-password" placeholder="At least 6s characters" required></label>
+            <label id="name-field" class="field hidden"
+              >Your name<input name="name" autocomplete="name" placeholder="e.g. Jamie Parker"
+            /></label>
+            <label class="field"
+              >Email address<input
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@example.com"
+                required
+            /></label>
+            <label class="field"
+              >Password<input
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="At least 6s characters"
+                required
+            /></label>
             <p id="auth-message" class="form-message" role="alert"></p>
             <button id="auth-submit" class="button button-dark button-wide" type="submit">Sign in</button>
           </form>
-          <p id="auth-switch-row" class="auth-switch"><span id="auth-switch-copy">New around here?</span> <button id="auth-switch" class="text-button" type="button">Create an account</button></p>
+          <p id="auth-switch-row" class="auth-switch">
+            <span id="auth-switch-copy">New around here?</span>
+            <button id="auth-switch" class="text-button" type="button">Create an account</button>
+          </p>
         </div>
         <p class="auth-footnote">A neighborhood favorite, one order at a time.</p>
       </section>
     </main>
 
-    <!-- Authenticated shell: role-specific navigation and page content mount here. -->
     <div id="app-view" class="app-layout hidden">
       <aside class="sidebar">
-        <a class="brand" href="#menu" aria-label="Yummy Food Hub home"><span class="brand-mark" aria-hidden="true"><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span><span>Yummy<span class="brand-muted">Food Hub</span></span></a>
+        <a class="brand" href="#menu" aria-label="Yummy Food Hub home"
+          ><span class="brand-mark" aria-hidden="true"
+            ><span class="brand-plate"></span><span class="brand-tomato"></span><span class="brand-leaf"></span></span
+          ><span>Yummy<span class="brand-muted">Food Hub</span></span></a
+        >
         <div class="sidebar-label">YOUR TABLE</div>
         <nav id="customer-nav" class="nav-list" aria-label="Main navigation">
           <button class="nav-link active" data-page="menu"><span class="nav-icon"></span>Discover</button>
           <button class="nav-link" data-page="orders"><span class="nav-icon"></span>My orders</button>
           <button class="nav-link" data-page="my-dishes"><span class="nav-icon"></span>My food</button>
-          <button class="nav-link" data-page="my-sales"><span class="nav-icon">$</span>My sales</button>
+          <button class="nav-link" data-page="my-sales"><span class="nav-icon"></span>My sales</button>
           <button class="nav-link" data-page="create-recipe"><span class="nav-icon"></span>Create dish</button>
         </nav>
         <nav id="staff-nav" class="nav-list hidden" aria-label="Staff navigation">
-          <button class="nav-link active" data-page="inventory"><span class="nav-icon">▦</span>Inventory</button>
-          <button class="nav-link" data-page="staff-orders"><span class="nav-icon">▤</span>Orders</button>
-          <button class="nav-link" data-page="create-recipe" data-source="business"><span class="nav-icon">＋</span>Add house dish</button>
+          <button class="nav-link active" data-page="inventory"><span class="nav-icon"></span>Inventory</button>
+          <button class="nav-link" data-page="staff-orders"><span class="nav-icon"></span>Orders</button>
+          <button class="nav-link" data-page="create-recipe" data-source="business">
+            <span class="nav-icon"></span>Add house dish
+          </button>
         </nav>
         <nav id="admin-nav" class="nav-list hidden" aria-label="Admin navigation">
-          <button class="nav-link active" data-page="dashboard"><span class="nav-icon">▤</span>Dashboard</button>
-          <button class="nav-link" data-page="staff-orders"><span class="nav-icon">▣</span>All orders</button>
-          <button class="nav-link" data-page="inventory"><span class="nav-icon">▦</span>Inventory</button>
-          <button class="nav-link" data-page="create-recipe" data-source="business"><span class="nav-icon">＋</span>Add house dish</button>
+          <button class="nav-link active" data-page="dashboard"><span class="nav-icon"></span>Dashboard</button>
+          <button class="nav-link" data-page="staff-orders"><span class="nav-icon"></span>All orders</button>
+          <button class="nav-link" data-page="inventory"><span class="nav-icon"></span>Inventory</button>
+          <button class="nav-link" data-page="create-recipe" data-source="business">
+            <span class="nav-icon"></span>Add house dish
+          </button>
         </nav>
         <div class="sidebar-bottom">
-          <div class="sidebar-promo"><span class="promo-spark">✳</span><strong>Something good<br>is on the way.</strong><span>Prepared with a little extra care.</span></div>
-          <div class="account-row"><div class="avatar" id="user-avatar">Y</div><div class="account-copy"><strong id="user-name">Guest</strong><span id="user-role">Customer</span></div><button class="icon-button logout-button" id="logout-button" aria-label="Sign out" title="Sign out">Sign out</button></div>
+          <div class="sidebar-promo">
+            <span class="promo-spark">✳</span><strong>Something good<br />is on the way.</strong
+            ><span>Prepared with a little extra care.</span>
+          </div>
+          <div class="account-row">
+            <div class="avatar" id="user-avatar">Y</div>
+            <div class="account-copy"><strong id="user-name">Guest</strong><span id="user-role">Customer</span></div>
+            <button class="icon-button logout-button" id="logout-button" aria-label="Sign out" title="Sign out">
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
       <section class="workspace">
         <header class="topbar">
-          <div class="topbar-left"><button id="back-button" class="back-button" type="button" aria-label="Go to previous page" title="Go to previous page" disabled>Back</button><div class="breadcrumbs"><span>Yummy Food Hub</span><span class="crumb-sep">/</span><strong id="page-crumb">Discover</strong></div></div>
-          <div class="topbar-actions"><span class="today-label" id="today-label"></span><button id="cart-open" class="cart-button"><span class="cart-bag" aria-hidden="true">▱</span> Your bag <span class="cart-count" id="cart-count">0</span></button></div>
+          <div class="topbar-left">
+            <button
+              id="back-button"
+              class="back-button"
+              type="button"
+              aria-label="Go to previous page"
+              title="Go to previous page"
+              disabled
+            >
+              Back
+            </button>
+            <div class="breadcrumbs">
+              <span>Yummy Food Hub</span><span class="crumb-sep">/</span><strong id="page-crumb">Discover</strong>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <span class="today-label" id="today-label"></span
+            ><button id="cart-open" class="cart-button">
+              <span class="cart-bag" aria-hidden="true">▱</span> Your bag
+              <span class="cart-count" id="cart-count">0</span>
+            </button>
+          </div>
         </header>
         <main id="page-content" class="page-content"></main>
       </section>
     </div>
-    <!-- Shared live regions and drawer mount point used by client-side actions. -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="modal-root"></div>
   </body>
