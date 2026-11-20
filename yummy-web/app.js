@@ -107,9 +107,11 @@ function money(value) {
   }).format(Number(value) || 0);
 }
 
+const API_BASE = 'https://yummy-foodhub-webapp.onrender.com';
+
 async function api(path, options = {}) {
   const token = readStorage('yummy-token');
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
