@@ -9,10 +9,7 @@ const state = {
   riders: [],
   availableDeliveries: [],
   riderDeliveries: [],
-  myDishes: [],
   dashboard: null,
-  sellerDashboard: null,
-  sellerOrders: [],
   page: 'menu',
   pageHistory: [],
   category: 'All',
@@ -22,7 +19,6 @@ const state = {
   liveRefreshInFlight: false,
   registering: false,
   authMode: 'customer',
-  recipeSource: 'community',
   checkout: { deliveryType: 'pickup', address: '', phone: '' },
 };
 
@@ -64,8 +60,7 @@ function getDefaultMenu(menuItems) {
   const allowedTitles = new Set(defaultMenuTitles);
   const itemsByTitle = new Map();
   for (const item of menuItems) {
-    const source = item.listing_type || (item.seller_user_id ? 'community' : 'business');
-    if (source === 'business' && allowedTitles.has(item.title) && !itemsByTitle.has(item.title)) {
+    if (allowedTitles.has(item.title) && !itemsByTitle.has(item.title)) {
       itemsByTitle.set(item.title, item);
     }
   }
@@ -186,6 +181,7 @@ function showApp() {
   document.querySelector('#staff-nav').classList.toggle('hidden', !isStaff);
   document.querySelector('#admin-nav').classList.toggle('hidden', !isAdmin);
   document.querySelector('#rider-nav').classList.toggle('hidden', !isRider);
+  document.querySelector('#cart-open').classList.toggle('hidden', isAdmin || isStaff || isRider);
   document.querySelector('#user-name').textContent = state.user.name;
   document.querySelector('#user-role').textContent = state.user.role;
   document.querySelector('#user-avatar').textContent = (state.user.name || 'Y').trim().charAt(0).toUpperCase();
@@ -194,7 +190,7 @@ function showApp() {
     month: 'short',
     day: 'numeric',
   }).format(new Date());
-  state.page = isAdmin ? 'dashboard' : isStaff ? 'inventory' : isRider ? 'available-deliveries' : 'menu';
+  state.page = isAdmin || isStaff ? 'dashboard' : isRider ? 'available-deliveries' : 'menu';
   state.pageHistory = [];
   setActiveNav();
   renderPage();
@@ -229,19 +225,16 @@ async function renderPage() {
   const content = document.querySelector('#page-content');
   const crumb = document.querySelector('#page-crumb');
   const pages = {
-    menu: 'Discover',
+    menu: 'Menu',
     orders: 'My orders',
     inventory: 'Inventory',
     'staff-orders': 'Orders',
     dashboard: 'Dashboard',
-    'my-dishes': 'My food',
-    'my-sales': 'My sales',
-    'create-recipe': 'Create dish',
     'admin-deliveries': 'Deliveries',
     'available-deliveries': 'Available Deliveries',
     'rider-dashboard': 'My deliveries',
   };
-  crumb.textContent = pages[state.page] || 'Discover';
+  crumb.textContent = pages[state.page] || 'Menu';
   if (state.page === 'menu') {
     content.innerHTML = '<div class="empty-state">Loading today\'s menu...</div>';
     try {
@@ -259,33 +252,6 @@ async function renderPage() {
       renderAdminDashboard();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-dashboard">Try again</button></div>`;
-    }
-    return;
-  }
-  if (state.page === 'create-recipe') {
-    renderCreateRecipe();
-    return;
-  }
-  if (state.page === 'my-dishes') {
-    content.innerHTML = '<div class="empty-state">Loading your dishes...</div>';
-    try {
-      state.myDishes = await api(`/recipes/user/${encodeURIComponent(state.user.id)}`);
-      renderMyDishes();
-    } catch (error) {
-      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-my-dishes">Try again</button></div>`;
-    }
-    return;
-  }
-  if (state.page === 'my-sales') {
-    content.innerHTML = '<div class="empty-state">Loading your sales...</div>';
-    try {
-      [state.sellerDashboard, state.sellerOrders] = await Promise.all([
-        api('/seller/dashboard'),
-        api('/seller/orders'),
-      ]);
-      renderSellerDashboard();
-    } catch (error) {
-      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-my-sales">Try again</button></div>`;
     }
     return;
   }
@@ -363,10 +329,6 @@ function renderMenu() {
       item.title,
       item.category,
       item.description,
-      item.seller_name,
-      item.creator_name,
-      item.creator_role,
-      ...(item.ingredients || []).map((ingredient) => `${ingredient.quantity_text} ${ingredient.ingredient_name}`),
     ]
       .join(' ')
       .toLowerCase();
@@ -377,30 +339,10 @@ function renderMenu() {
       const outOfStock = Number(item.stock_quantity) <= 0;
       const imageUrl = item.image_url || imageChoices[index % imageChoices.length];
       const safeImageUrl = String(imageUrl).replace(/['"]/g, '\\$&');
-      const ingredients = (item.ingredients || [])
-        .map((ingredient) => {
-          const quantity = ingredient.quantity_text ? `${ingredient.quantity_text} ` : '';
-          return `${quantity}${ingredient.ingredient_name}`;
-        })
-        .join(', ');
-      // Older menu rows may not have a source value until they pass through the schema migration.
-      const listingType = item.listing_type || (item.seller_user_id ? 'community' : 'business');
-      const source =
-        listingType === 'community'
-          ? `Community dish · ${item.seller_name || item.creator_name || 'Local cook'}`
-          : item.creator_name
-            ? `Hub menu · ${item.creator_name} (${item.creator_role || 'staff'})`
-            : 'Hub menu · Yummy Food Hub';
-      const recipeDetails = item.preparation_steps
-        ? `<details class="food-recipe"><summary>View recipe</summary><p>${escapeHtml(item.preparation_steps)}</p></details>`
-        : '';
       return `<article class="food-card">
       <div class="food-photo" style="background-image:url('${safeImageUrl}')"><span class="food-tag">${escapeHtml(item.category || 'Fresh pick')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
-      <p class="food-source">${escapeHtml(source)}</p>
-      <p class="food-description">${escapeHtml(item.description || 'Freshly prepared with good ingredients and a little extra care.')}</p>
-      <p class="food-ingredients"><strong>Ingredients</strong> ${escapeHtml(ingredients || 'Not listed')}</p>
-      ${recipeDetails}
+      <p class="food-description">${escapeHtml(item.description || 'Made fresh with care.')}</p>
       <div class="food-footer"><span class="stock-label ${outOfStock ? 'out' : ''}">${outOfStock ? 'Unavailable · admin review' : `Available · ${Number(item.stock_quantity)} left`}</span>
       <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add'}</button></div></div>
     </article>`;
@@ -423,8 +365,7 @@ function renderOrders() {
       const items = (order.items || [])
         .map((item) => {
           const status = String(item.item_status || order.status || 'pending').toLowerCase();
-          const seller = item.seller_name || 'Yummy Food Hub';
-          return `<div class="order-line"><span>${item.quantity} × ${escapeHtml(item.title)}<small>from ${escapeHtml(seller)}</small></span><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span></div>`;
+          return `<div class="order-line"><span>${item.quantity} × ${escapeHtml(item.title)}</span><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span></div>`;
         })
         .join('');
       const date = order.created_at
@@ -518,15 +459,13 @@ function renderStaffOrders() {
         .map((item) => {
           const status = String(item.item_status || order.status || 'pending').toLowerCase();
           const lineTotal = Number(item.price) * Number(item.quantity);
-          // Admin actions target each dish line because sellers can decide independently in mixed carts.
           const actions =
             status === 'pending'
               ? `<button class="table-action approve-button" data-action="update-order-item" data-status="approved" data-id="${escapeHtml(item.order_item_id)}">Approve</button><button class="table-action reject-button" data-action="update-order-item" data-status="rejected" data-id="${escapeHtml(item.order_item_id)}">Reject</button>`
               : status === 'approved'
                 ? `<button class="table-action" data-action="update-order-item" data-status="completed" data-id="${escapeHtml(item.order_item_id)}">Mark complete</button>`
                 : '';
-          const sellerName = item.seller_name || 'Yummy Food Hub';
-          return `<div class="admin-order-line"><div class="admin-order-line-title"><strong>${item.quantity} × ${escapeHtml(item.title)}</strong><span>${escapeHtml(sellerName)}</span></div><div class="admin-order-line-money"><span>Dish total ${money(lineTotal)}</span><span>Commission ${money(item.commission_amount)}</span><span>Seller net ${money(item.seller_amount)}</span></div><div class="admin-order-line-actions"><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span>${actions}</div></div>`;
+          return `<div class="admin-order-line"><div class="admin-order-line-title"><strong>${item.quantity} × ${escapeHtml(item.title)}</strong></div><div class="admin-order-line-money"><span>Line total ${money(lineTotal)}</span></div><div class="admin-order-line-actions"><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span>${actions}</div></div>`;
         })
         .join('');
       const date = order.created_at
@@ -597,13 +536,7 @@ function renderInventory() {
   const rows = state.inventory
     .map((item) => {
       const count = Number(item.stock_quantity) || 0;
-      const source =
-        item.listing_type === 'community'
-          ? `Community · ${item.seller_name || item.creator_name || 'Local cook'}`
-          : item.creator_name
-            ? `Hub menu · ${item.creator_name} (${item.creator_role || 'staff'})`
-            : 'Hub menu · Yummy Food Hub';
-      return `<div class="inventory-row"><div class="inventory-name">${escapeHtml(item.title)}<span class="inventory-meta">${escapeHtml(item.category || 'Uncategorized')} · ${escapeHtml(source)}</span></div><div class="inventory-category">${escapeHtml(item.listing_type === 'community' ? 'Community dish' : 'Hub dish')}</div><div class="inventory-qty"><span class="stock-number ${count <= 5 ? 'low' : ''}">${count}</span><span class="inventory-category">${count <= 5 ? 'Low stock' : 'In stock'}</span></div><button class="table-action" data-action="edit-stock" data-id="${escapeHtml(item.id)}">Adjust stock</button></div>`;
+      return `<div class="inventory-row"><div class="inventory-name">${escapeHtml(item.title)}<span class="inventory-meta">${escapeHtml(item.description || '')}</span></div><div class="inventory-category">${escapeHtml(item.category || 'Menu item')}</div><div class="inventory-qty"><span class="stock-number ${count <= 5 ? 'low' : ''}">${count}</span><span class="inventory-category">${count <= 5 ? 'Low stock' : 'In stock'}</span></div><button class="table-action" data-action="edit-stock" data-id="${escapeHtml(item.id)}">Adjust stock</button></div>`;
     })
     .join('');
   document.querySelector('#page-content').innerHTML =
@@ -620,19 +553,12 @@ function renderAdminDashboard() {
     ['Active deliveries', Number(summary.active_deliveries)],
     ['Unassigned', Number(summary.unassigned_deliveries)],
     ['Approved sales', money(summary.total_sales)],
-    ['Commission earned', money(summary.total_commission)],
-    ['Available dishes', `${Number(summary.available_dishes)} / ${Number(summary.total_dishes)}`],
+    ['Available menu items', `${Number(summary.available_dishes)} / ${Number(summary.total_dishes)}`],
   ];
   const rows = recentOrders
     .map((order) => {
       const items = (order.items || [])
-        .map((item) => {
-          const source =
-            item.listing_type === 'community'
-              ? `Community · ${item.seller_name || 'seller'}`
-              : `Hub menu${item.creator_name ? ` · ${item.creator_name}` : ''}`;
-          return `${item.quantity} × ${escapeHtml(item.title)} (${escapeHtml(source)} · ${escapeHtml(item.item_status)})`;
-        })
+        .map((item) => `${item.quantity} × ${escapeHtml(item.title)} (${escapeHtml(item.item_status)})`)
         .join(', ');
       return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}<small>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</small></div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></article>`;
     })
@@ -642,69 +568,6 @@ function renderAdminDashboard() {
   <div class="dashboard-stats">${stats.map(([label, value]) => `<article class="dashboard-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('')}</div>
   <div class="section-title dashboard-section-title"><h2>Recent orders</h2><span>Newest first</span></div>
   ${rows ? `<div class="dashboard-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed yet.</div>'}`;
-}
-
-function renderSellerDashboard() {
-  const summary = state.sellerDashboard.summary;
-  const stats = [
-    ['Orders received', Number(summary.orders_received)],
-    ['Awaiting your decision', Number(summary.pending_dishes)],
-    ['Your earnings', money(summary.seller_earnings)],
-    ['Hub commission (5%)', money(summary.commission)],
-  ];
-  const rows = state.sellerOrders
-    .map((line) => {
-      const status = String(line.item_status || 'pending').toLowerCase();
-      const gross = Number(line.price) * Number(line.quantity);
-      const actions =
-        status === 'pending'
-          ? `<button class="table-action approve-button" data-action="update-order-item" data-status="approved" data-id="${escapeHtml(line.order_item_id)}">Approve</button><button class="table-action reject-button" data-action="update-order-item" data-status="rejected" data-id="${escapeHtml(line.order_item_id)}">Reject</button>`
-          : status === 'approved'
-            ? `<button class="table-action" data-action="update-order-item" data-status="completed" data-id="${escapeHtml(line.order_item_id)}">Mark complete</button>`
-            : '';
-      return `<article class="seller-sale-row"><div><strong>${escapeHtml(line.title)}</strong><span>Order #${escapeHtml(line.order_id)} · ${escapeHtml(line.created_at ? new Intl.DateTimeFormat('en-UG', { dateStyle: 'medium' }).format(new Date(line.created_at)) : 'Recently')}</span></div><div class="seller-buyer"><strong>${escapeHtml(line.buyer_name)}</strong><span>${escapeHtml(line.buyer_email)}</span></div><span>${line.quantity} × ${money(line.price)}</span><div class="seller-payout"><span>Gross ${money(gross)}</span><span>Fee ${money(line.commission_amount)}</span><strong>Net ${money(line.seller_amount)}</strong></div><div class="seller-sale-actions"><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span>${actions}</div></article>`;
-    })
-    .join('');
-  document.querySelector('#page-content').innerHTML =
-    `<div class="page-heading"><div><p class="eyebrow">YOUR ORDERS & EARNINGS</p><h1>My sales</h1><p>See each buyer, decide on your dish orders, and track your net earnings.</p></div><button class="table-action" data-action="refresh-my-sales">↻ Refresh</button></div>
-  <div class="dashboard-stats seller-stats">${stats.map(([label, value]) => `<article class="dashboard-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('')}</div>
-  <div class="section-title dashboard-section-title"><h2>Orders for your dishes</h2><span>Only your listings</span></div>
-  ${rows ? `<div class="seller-sale-list">${rows}</div>` : '<div class="empty-state">No one has ordered your dishes yet. Orders will show up here with the buyer details.</div>'}`;
-}
-
-function renderCreateRecipe() {
-  const isBusinessDish = state.recipeSource === 'business';
-  const pageTitle = isBusinessDish ? 'Add a house dish' : 'Create a dish';
-  const pageDescription = isBusinessDish
-    ? 'Publish a Yummy Food Hub dish created by staff or admin.'
-    : 'Share your recipe with everyone browsing Yummy Food Hub.';
-  document.querySelector('#page-content').innerHTML =
-    `<div class="page-heading"><div><p class="eyebrow">${isBusinessDish ? 'YUMMY FOOD HUB MENU' : 'FROM YOUR KITCHEN'}</p><h1>${pageTitle}</h1><p>${pageDescription}</p></div></div>
-  <form id="recipe-form" class="recipe-form">
-    <label class="field">Dish name<input name="title" maxlength="160" placeholder="e.g. Groundnut Luwombo" required></label>
-    <label class="field">Category<input name="category" maxlength="80" placeholder="Traditional, Street Food..." required></label>
-    <label class="field">Price in UGX<input name="price" type="number" min="1000" step="500" placeholder="12000" required></label>
-    <label class="field">Available portions<input name="stock_quantity" type="number" min="0" step="1" value="5" required></label>
-    <label class="field recipe-wide">Dish photo<input type="file" name="dish_image" accept="image/*"></label>
-    <div id="recipe-image-preview" class="recipe-image-preview hidden"></div>
-    <label class="field recipe-wide">Description<textarea name="description" maxlength="500" rows="3" placeholder="Tell people what makes this dish special."></textarea></label>
-    <label class="field recipe-wide">Ingredients, one per line<textarea name="ingredients" rows="5" placeholder="2 eggs&#10;1 chapati&#10;1 tomato" required></textarea></label>
-    <label class="field recipe-wide">Preparation steps<textarea name="preparation_steps" rows="5" placeholder="Explain how to prepare the dish, step by step." required></textarea></label>
-    <p id="recipe-message" class="form-message recipe-wide" role="alert"></p>
-    <div class="recipe-actions recipe-wide"><span>Set portions to 0 to mark the dish unavailable.</span><button class="button button-dark" type="submit">Publish dish</button></div>
-  </form>`;
-}
-
-function renderMyDishes() {
-  const rows = state.myDishes
-    .map((item) => {
-      const available = Number(item.stock_quantity) > 0;
-      return `<div class="my-dish-row"><div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${money(item.price)}</span></div><span class="status-pill ${available ? 'approved' : 'rejected'}">${available ? `Available · ${item.stock_quantity}` : 'Unavailable'}</span><button class="table-action" data-action="edit-stock" data-id="${escapeHtml(item.id)}">Update availability</button></div>`;
-    })
-    .join('');
-  document.querySelector('#page-content').innerHTML =
-    `<div class="page-heading"><div><p class="eyebrow">YOUR LISTINGS</p><h1>My food</h1><p>Manage portions and availability for your dishes.</p></div><button class="table-action" data-action="go-create-recipe">＋ Create dish</button></div>
-  ${rows ? `<div class="my-dish-list">${rows}</div>` : '<div class="empty-state">You have not published a dish yet. Add your first recipe to the menu.</div>'}`;
 }
 
 function syncCart() {
@@ -851,7 +714,7 @@ async function viewDeliveryHistory(orderId) {
 }
 
 async function changeStock(itemId) {
-  const item = [...state.inventory, ...state.myDishes].find((entry) => String(entry.id) === String(itemId));
+  const item = state.inventory.find((entry) => String(entry.id) === String(itemId));
   if (!item) return;
   const value = window.prompt(`Set available quantity for ${item.title}:`, item.stock_quantity);
   if (value === null) return;
@@ -866,8 +729,7 @@ async function changeStock(itemId) {
       body: JSON.stringify({ stock_quantity: quantity }),
     });
     item.stock_quantity = quantity;
-    if (state.page === 'my-dishes') await renderPage();
-    else renderInventory();
+    renderInventory();
     showToast('Stock updated');
   } catch (error) {
     showToast(error.message);
@@ -878,86 +740,16 @@ async function updateOrderItemStatus(lineId, status, button) {
   button.disabled = true;
   button.textContent = status === 'approved' ? 'Approving...' : status === 'rejected' ? 'Rejecting...' : 'Updating...';
   try {
-    // Seller ownership is enforced by the API from the session, not this page state.
-    await api(`/seller/order-items/${encodeURIComponent(lineId)}/status`, {
+    await api(`/staff/order-items/${encodeURIComponent(lineId)}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status }),
     });
-    showToast(`Dish order ${status}`);
+    showToast(`Order item ${status}`);
     await renderPage();
   } catch (error) {
     showToast(error.message);
     button.disabled = false;
     button.textContent = status === 'approved' ? 'Approve' : status === 'rejected' ? 'Reject' : 'Mark complete';
-  }
-}
-
-async function readImageFile(file) {
-  if (!file) return '';
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error('Please choose an image smaller than 5MB.');
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Could not read the selected image. Please try another photo.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function previewRecipeImage(file) {
-  const preview = document.querySelector('#recipe-image-preview');
-  if (!preview || !file) {
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    preview.innerHTML = `<img src="${String(reader.result || '')}" alt="Dish preview" />`;
-    preview.classList.remove('hidden');
-  };
-  reader.readAsDataURL(file);
-}
-
-async function submitRecipe(event) {
-  event.preventDefault();
-  const form = event.target;
-  const values = new FormData(form);
-  const ingredients = String(values.get('ingredients') || '')
-    .split(/[\n,]/)
-    .map((ingredient) => ingredient.trim())
-    .filter(Boolean);
-  const message = document.querySelector('#recipe-message');
-  if (ingredients.length === 0) {
-    message.textContent = 'Add at least one ingredient.';
-    return;
-  }
-  const submit = form.querySelector('button[type="submit"]');
-  const imageFile = values.get('dish_image');
-  submit.disabled = true;
-  message.textContent = '';
-  try {
-    const imageUrl = await readImageFile(imageFile && imageFile instanceof File ? imageFile : null);
-    // Only staff/admin navigation sets this flag; customer submissions always use the community endpoint.
-    const isBusinessDish = state.recipeSource === 'business';
-    await api(isBusinessDish ? '/staff/menu' : '/recipes', {
-      method: 'POST',
-      body: JSON.stringify({
-        title: String(values.get('title') || '').trim(),
-        category: String(values.get('category') || '').trim(),
-        description: String(values.get('description') || '').trim(),
-        preparation_steps: String(values.get('preparation_steps') || '').trim(),
-        price: Number(values.get('price')),
-        stock_quantity: Number(values.get('stock_quantity')),
-        ingredients,
-        image_url: imageUrl,
-      }),
-    });
-    showToast(isBusinessDish ? 'House dish added to the Hub menu' : 'Your dish is now on the community menu');
-    setPage(isBusinessDish ? 'inventory' : 'my-dishes');
-  } catch (error) {
-    message.textContent = error.message;
-  } finally {
-    submit.disabled = false;
   }
 }
 
@@ -1036,11 +828,6 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 });
 document.querySelector('#cart-open').addEventListener('click', renderCart);
 document.querySelector('#back-button').addEventListener('click', goBack);
-document.querySelector('#page-content').addEventListener('change', (event) => {
-  if (event.target && event.target.name === 'dish_image' && event.target.files && event.target.files[0]) {
-    previewRecipeImage(event.target.files[0]);
-  }
-});
 document.querySelector('#page-content').addEventListener('input', (event) => {
   if (event.target.id === 'menu-search') {
     state.search = event.target.value;
@@ -1050,9 +837,6 @@ document.querySelector('#page-content').addEventListener('input', (event) => {
     input.focus();
     input.setSelectionRange(cursor, cursor);
   }
-});
-document.querySelector('#page-content').addEventListener('submit', (event) => {
-  if (event.target.id === 'recipe-form') submitRecipe(event);
 });
 document.querySelector('#page-content').addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
@@ -1070,14 +854,10 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   if (action === 'update-rider-status') updateRiderDelivery(id, target.dataset.status, target);
   if (action === 'update-admin-delivery') updateAdminDelivery(id, target.dataset.status, target);
   if (action === 'view-delivery-history') viewDeliveryHistory(id);
-  if (action === 'go-create-recipe') {
-    state.recipeSource = 'community';
-    setPage('create-recipe');
-  }
   if (action === 'open-order-queue') setPage('staff-orders');
   if (action === 'open-deliveries') setPage('admin-deliveries');
   if (action === 'refresh-inventory') renderPage();
-  if (action === 'refresh-dashboard' || action === 'refresh-my-dishes' || action === 'refresh-my-sales') renderPage();
+  if (action === 'refresh-dashboard') renderPage();
   if (action === 'refresh-orders' || action === 'refresh-staff-orders') renderPage();
   if (action === 'refresh-deliveries' || action === 'refresh-rider-deliveries') renderPage();
   if (action === 'refresh-available-deliveries') renderPage();
@@ -1112,7 +892,6 @@ document.querySelector('#modal-root').addEventListener('click', (event) => {
 });
 document.querySelectorAll('.nav-link').forEach((button) =>
   button.addEventListener('click', () => {
-    if (button.dataset.page === 'create-recipe') state.recipeSource = button.dataset.source || 'community';
     setPage(button.dataset.page);
   }),
 );
