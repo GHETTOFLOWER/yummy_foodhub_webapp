@@ -504,6 +504,20 @@ async function attachOrderItems(orders) {
   return orders;
 }
 
+async function attachRiderOrderItems(orders) {
+  for (const order of orders) {
+    const [items] = await pool.query(
+      `SELECT oi.quantity, mi.title
+       FROM order_items oi
+       JOIN menu_items mi ON mi.id = oi.item_id
+       WHERE oi.order_id = ? ORDER BY oi.id`,
+      [order.id],
+    );
+    order.items = items;
+  }
+  return orders;
+}
+
 async function attachDeliveryProgress(orders) {
   if (!orders.length) return orders;
   // Delivery lifecycle stays on orders/deliveries; item-level approval and seller payout statuses remain separate.
@@ -704,10 +718,30 @@ async function syncRiderAvailability(connection, riderId) {
      WHERE rider_id = ? AND delivery_status IN ('assigned', 'picked_up', 'out_for_delivery')`,
     [riderId],
   );
-  await connection.query('UPDATE delivery_riders SET status = ? WHERE id = ?', [
-    Number(active.active_count) > 0 ? 'busy' : 'available',
-    riderId,
-  ]);
+  const status = Number(active.active_count) > 0 ? 'busy' : 'available';
+  await connection.query('UPDATE delivery_riders SET status = ? WHERE id = ?', [status, riderId]);
+  return status;
+}
+
+async function syncRiderProfiles(connection = pool) {
+  await connection.query(
+    `INSERT INTO delivery_riders (user_id, rider_name, status)
+     SELECT u.id, u.name, 'available'
+     FROM users u
+     WHERE u.role = 'rider'
+     ON DUPLICATE KEY UPDATE rider_name = VALUES(rider_name)`,
+  );
+}
+
+async function syncRiderProfile(connection, userId) {
+  await connection.query(
+    `INSERT INTO delivery_riders (user_id, rider_name, status)
+     SELECT u.id, u.name, 'available'
+     FROM users u
+     WHERE u.id = ? AND u.role = 'rider'
+     ON DUPLICATE KEY UPDATE rider_name = VALUES(rider_name)`,
+    [userId],
+  );
 }
 
 async function advanceDelivery(connection, delivery, nextStatus, userId) {
@@ -1180,12 +1214,14 @@ app.get('/admin/deliveries', requireAuth, requireRole('admin'), async (req, res)
 
 app.get('/admin/riders/available', requireAuth, requireRole('admin'), async (req, res) => {
   try {
+    await syncRiderProfiles();
     const [riders] = await pool.query(
-      `SELECT rider.id, rider.rider_name, rider.rider_phone, rider.status
+      `SELECT rider.id, u.name AS rider_name, u.email AS rider_email,
+         rider.rider_phone, rider.status
        FROM delivery_riders rider
        JOIN users u ON u.id = rider.user_id
        WHERE rider.status = 'available' AND u.role = 'rider'
-       ORDER BY rider.rider_name`,
+       ORDER BY u.name`,
     );
     res.json(riders);
   } catch (err) {
@@ -1196,12 +1232,14 @@ app.get('/admin/riders/available', requireAuth, requireRole('admin'), async (req
 
 app.get('/admin/riders', requireAuth, requireRole('admin'), async (req, res) => {
   try {
+    await syncRiderProfiles();
     const [riders] = await pool.query(
-      `SELECT rider.id, rider.rider_name, rider.rider_phone, rider.status, rider.user_id,
-         (u.id IS NOT NULL AND u.role = 'rider') AS login_enabled
+      `SELECT rider.id, u.name AS rider_name, u.email AS rider_email,
+         rider.rider_phone, rider.status, rider.user_id
        FROM delivery_riders rider
-       LEFT JOIN users u ON u.id = rider.user_id
-       ORDER BY rider.rider_name`,
+       JOIN users u ON u.id = rider.user_id
+       WHERE u.role = 'rider'
+       ORDER BY u.name`,
     );
     res.json(riders);
   } catch (err) {
@@ -1210,74 +1248,111 @@ app.get('/admin/riders', requireAuth, requireRole('admin'), async (req, res) => 
   }
 });
 
-app.put('/admin/orders/:id/assign-rider', requireAuth, requireRole('admin'), async (req, res) => {
-  const riderId = Number(req.body.rider_id);
-  if (!Number.isInteger(riderId) || riderId < 1) {
-    return res.status(400).json({ error: 'Select a valid rider' });
+app.get('/rider/available-deliveries', requireAuth, requireRole('rider'), async (req, res) => {
+  try {
+    await syncRiderProfile(pool, req.user.id);
+    const [riders] = await pool.query(
+      `SELECT rider.id, rider.status
+       FROM delivery_riders rider
+       JOIN users u ON u.id = rider.user_id
+       WHERE rider.user_id = ? AND u.role = 'rider'`,
+      [req.user.id],
+    );
+    if (!riders.length) {
+      return res.status(403).json({ error: 'Your rider account is not active' });
+    }
+    if (await syncRiderAvailability(pool, riders[0].id) !== 'available') return res.json([]);
+    const [orders] = await pool.query(
+      `SELECT o.id, o.status, o.total_amount, o.delivery_type,
+         o.delivery_address, o.contact_phone, o.created_at,
+         customer.name AS customer_name
+       FROM orders o
+       JOIN users customer ON customer.id = o.user_id
+       WHERE o.delivery_type = 'delivery'
+         AND o.status = 'ready_for_delivery'
+         AND NOT EXISTS (
+           SELECT 1 FROM deliveries d
+           WHERE d.order_id = o.id
+             AND d.delivery_status IN ('assigned', 'picked_up', 'out_for_delivery')
+         )
+       ORDER BY o.created_at`,
+    );
+    res.json(await attachRiderOrderItems(orders));
+  } catch (err) {
+    console.error('AVAILABLE DELIVERIES ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load available deliveries: ' + err.message });
   }
+});
+
+app.post('/rider/deliveries/:orderId/accept', requireAuth, requireRole('rider'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [orders] = await connection.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
+    // Locking the order serializes claims so only one rider can accept it.
+    const [orders] = await connection.query(
+      'SELECT * FROM orders WHERE id = ? FOR UPDATE',
+      [req.params.orderId],
+    );
     if (!orders.length) {
-      const error = new Error('Order not found');
+      const error = new Error('Delivery order not found');
       error.statusCode = 404;
       throw error;
     }
     const order = orders[0];
-    if (order.delivery_type !== 'delivery' || !['ready_for_delivery', 'assigned'].includes(order.status)) {
-      const error = new Error('Riders can only be assigned to delivery orders that are ready');
+    if (order.delivery_type !== 'delivery' || order.status !== 'ready_for_delivery') {
+      const error = new Error('This delivery is no longer available');
       error.statusCode = 409;
       throw error;
     }
+
+    await syncRiderProfile(connection, req.user.id);
     const [riders] = await connection.query(
-      `SELECT rider.id, rider.status FROM delivery_riders rider
+      `SELECT rider.id, rider.status
+       FROM delivery_riders rider
        JOIN users u ON u.id = rider.user_id
-       WHERE rider.id = ? AND u.role = 'rider' FOR UPDATE`,
-      [riderId],
+       WHERE rider.user_id = ? AND u.role = 'rider'
+       FOR UPDATE`,
+      [req.user.id],
     );
     if (!riders.length) {
-      const error = new Error('The selected rider does not have a linked rider account');
-      error.statusCode = 400;
+      const error = new Error('Your rider account is not active');
+      error.statusCode = 403;
       throw error;
     }
-    const [existingDeliveries] = await connection.query(
-      'SELECT id, rider_id, delivery_status FROM deliveries WHERE order_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE',
+    if (await syncRiderAvailability(connection, riders[0].id) !== 'available') {
+      const error = new Error('You are already assigned to an active delivery');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const [activeDeliveries] = await connection.query(
+      `SELECT id FROM deliveries
+       WHERE order_id = ? AND delivery_status IN ('assigned', 'picked_up', 'out_for_delivery')
+       LIMIT 1 FOR UPDATE`,
       [order.id],
     );
-    const existing = existingDeliveries[0];
-    if (existing && existing.delivery_status !== 'assigned') {
-      const error = new Error('A rider cannot be changed after pickup');
+    if (activeDeliveries.length) {
+      const error = new Error('This delivery has already been accepted');
       error.statusCode = 409;
       throw error;
     }
-    const oldRiderId = existing && existing.rider_id;
-    if (riders[0].status !== 'available' && Number(oldRiderId) !== riderId) {
-      const error = new Error('The selected rider is currently busy');
-      error.statusCode = 409;
-      throw error;
-    }
-    if (existing) {
-      await connection.query(
-        `UPDATE deliveries SET rider_id = ?, delivery_status = 'assigned',
-           assigned_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [riderId, existing.id],
-      );
-    } else {
-      await connection.query(
-        `INSERT INTO deliveries (order_id, rider_id, delivery_status, assigned_at)
-         VALUES (?, ?, 'assigned', CURRENT_TIMESTAMP)`,
-        [order.id, riderId],
-      );
-    }
+
+    const [result] = await connection.query(
+      `INSERT INTO deliveries (order_id, rider_id, delivery_status, assigned_at)
+       VALUES (?, ?, 'assigned', CURRENT_TIMESTAMP)`,
+      [order.id, riders[0].id],
+    );
     await writeOrderStatus(connection, order.id, 'assigned', req.user.id);
-    await syncRiderAvailability(connection, oldRiderId);
-    await syncRiderAvailability(connection, riderId);
+    await syncRiderAvailability(connection, riders[0].id);
     await connection.commit();
-    res.json({ order_id: order.id, rider_id: riderId, status: 'assigned' });
+    res.status(201).json({
+      order_id: order.id,
+      delivery_id: result.insertId,
+      status: 'assigned',
+    });
   } catch (err) {
     await connection.rollback();
-    console.error('ASSIGN RIDER ERROR:', err.message);
+    console.error('ACCEPT DELIVERY ERROR:', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   } finally {
     connection.release();
@@ -1315,10 +1390,8 @@ app.put('/admin/deliveries/:deliveryId/status', requireAuth, requireRole('admin'
 app.get('/rider/deliveries', requireAuth, requireRole('rider'), async (req, res) => {
   try {
     const [orders] = await pool.query(
-      `SELECT o.*, customer.name AS customer_name, customer.email AS customer_email,
-         d.id AS delivery_id, d.delivery_status, d.rider_id, d.assigned_at,
-         d.picked_up_at, d.out_for_delivery_at, d.delivered_at, d.notes,
-         rider.rider_name, rider.rider_phone
+      `SELECT o.id, o.status, o.total_amount, o.delivery_address, o.contact_phone,
+         o.created_at, customer.name AS customer_name
        FROM deliveries d
        JOIN orders o ON o.id = d.order_id
        JOIN delivery_riders rider ON rider.id = d.rider_id
@@ -1327,7 +1400,7 @@ app.get('/rider/deliveries', requireAuth, requireRole('rider'), async (req, res)
        ORDER BY (d.delivery_status = 'delivered') ASC, d.assigned_at DESC`,
       [req.user.id],
     );
-    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
+    res.json(await attachDeliveryProgress(await attachRiderOrderItems(orders)));
   } catch (err) {
     console.error('RIDER DELIVERIES ERROR:', err.message);
     res.status(500).json({ error: 'Could not load your deliveries: ' + err.message });

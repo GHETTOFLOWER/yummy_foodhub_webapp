@@ -11,6 +11,42 @@ ALTER TABLE delivery_riders
   ADD COLUMN user_id INT NULL,
   ADD UNIQUE KEY uq_delivery_riders_user_id (user_id);
 
+-- Backfill profiles for all existing rider accounts. New rider roles are
+-- provisioned by the triggers below; existing profiles keep their phone/status.
+INSERT INTO delivery_riders (user_id, rider_name, status)
+SELECT u.id, u.name, 'available'
+FROM users u
+LEFT JOIN delivery_riders r ON r.user_id = u.id
+WHERE u.role = 'rider' AND r.id IS NULL;
+
+-- Keep rider profiles in sync when accounts are created or promoted to rider.
+DROP TRIGGER IF EXISTS users_sync_delivery_rider_after_insert;
+DROP TRIGGER IF EXISTS users_sync_delivery_rider_after_update;
+
+DELIMITER $$
+CREATE TRIGGER users_sync_delivery_rider_after_insert
+AFTER INSERT ON users
+FOR EACH ROW
+BEGIN
+  IF NEW.role = 'rider' THEN
+    INSERT INTO delivery_riders (user_id, rider_name, status)
+    VALUES (NEW.id, NEW.name, 'available')
+    ON DUPLICATE KEY UPDATE rider_name = VALUES(rider_name);
+  END IF;
+END$$
+
+CREATE TRIGGER users_sync_delivery_rider_after_update
+AFTER UPDATE ON users
+FOR EACH ROW
+BEGIN
+  IF NEW.role = 'rider' THEN
+    INSERT INTO delivery_riders (user_id, rider_name, status)
+    VALUES (NEW.id, NEW.name, 'available')
+    ON DUPLICATE KEY UPDATE rider_name = VALUES(rider_name);
+  END IF;
+END$$
+DELIMITER ;
+
 -- Keep the existing delivery rows and add timestamps for each rider milestone.
 ALTER TABLE deliveries
   MODIFY COLUMN delivery_status ENUM('assigned', 'picked_up', 'out_for_delivery', 'delivered')
@@ -41,6 +77,5 @@ CREATE TABLE IF NOT EXISTS order_status_history (
   INDEX idx_order_status_history_order (order_id, changed_at)
 );
 
--- Create a normal account, set its role to rider, then link it to a rider profile:
+-- Set an existing account's role to rider. The trigger creates its profile.
 -- UPDATE users SET role = 'rider' WHERE email = 'rider@example.com';
--- UPDATE delivery_riders SET user_id = 123 WHERE id = 1;

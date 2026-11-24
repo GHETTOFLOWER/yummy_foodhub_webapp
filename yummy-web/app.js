@@ -7,6 +7,7 @@ const state = {
   staffOrders: [],
   deliveryOrders: [],
   riders: [],
+  availableDeliveries: [],
   riderDeliveries: [],
   myDishes: [],
   dashboard: null,
@@ -16,6 +17,9 @@ const state = {
   pageHistory: [],
   category: 'All',
   search: '',
+  orderTrackingError: '',
+  availableDeliveriesError: '',
+  liveRefreshInFlight: false,
   registering: false,
   authMode: 'customer',
   recipeSource: 'community',
@@ -190,7 +194,7 @@ function showApp() {
     month: 'short',
     day: 'numeric',
   }).format(new Date());
-  state.page = isAdmin ? 'dashboard' : isStaff ? 'inventory' : isRider ? 'rider-dashboard' : 'menu';
+  state.page = isAdmin ? 'dashboard' : isStaff ? 'inventory' : isRider ? 'available-deliveries' : 'menu';
   state.pageHistory = [];
   setActiveNav();
   renderPage();
@@ -234,6 +238,7 @@ async function renderPage() {
     'my-sales': 'My sales',
     'create-recipe': 'Create dish',
     'admin-deliveries': 'Deliveries',
+    'available-deliveries': 'Available Deliveries',
     'rider-dashboard': 'My deliveries',
   };
   crumb.textContent = pages[state.page] || 'Discover';
@@ -288,6 +293,7 @@ async function renderPage() {
     content.innerHTML = '<div class="empty-state">Gathering your orders...</div>';
     try {
       state.orders = await api(`/orders/${encodeURIComponent(state.user.id)}`);
+      state.orderTrackingError = '';
       renderOrders();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="retry-orders">Try again</button></div>`;
@@ -321,6 +327,18 @@ async function renderPage() {
       renderRiderDashboard();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-rider-deliveries">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'available-deliveries') {
+    content.innerHTML = '<div class="empty-state">Checking for available deliveries...</div>';
+    try {
+      state.availableDeliveries = await api('/rider/available-deliveries');
+      state.availableDeliveriesError = '';
+      renderAvailableDeliveries();
+    } catch (error) {
+      state.availableDeliveriesError = error.message;
+      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-available-deliveries">Try again</button></div>`;
     }
     return;
   }
@@ -423,7 +441,10 @@ function renderOrders() {
       return `<article class="tracked-order"><div class="tracked-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)} · ${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</div></div><div class="tracked-order-total"><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-items">${items || 'Order details unavailable'}</div><section class="delivery-progress" aria-label="Order progress">${renderOrderProgress(order)}</section><div class="order-delivery-details">${detail}<p><strong>Contact:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p></div>${history ? `<details class="order-history"><summary>Order and delivery history</summary><ol>${history}</ol></details>` : ''}</article>`;
     })
     .join('');
-  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">YOUR YUMMY MOMENTS</p><h1>My orders</h1><p>Track progress from approval through pickup or delivery.</p></div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="tracked-order-list">${rows}</div>` : '<div class="empty-state">No orders just yet. Your first favorite is waiting in the menu.</div>'}`;
+  const liveStatus = state.orderTrackingError
+    ? `<p class="tracking-refresh-status error-text" role="status">Live tracking refresh failed: ${escapeHtml(state.orderTrackingError)}</p>`
+    : '<p class="tracking-refresh-status" role="status">Delivery updates refresh automatically every 10 seconds.</p>';
+  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">YOUR YUMMY MOMENTS</p><h1>My orders</h1><p>Track progress from approval through delivery.</p>${liveStatus}</div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="tracked-order-list">${rows}</div>` : '<div class="empty-state">No orders just yet. Your first favorite is waiting in the menu.</div>'}`;
 }
 
 function statusLabel(status) {
@@ -431,7 +452,7 @@ function statusLabel(status) {
     ready_for_delivery: 'Ready For Delivery',
     out_for_delivery: 'Out For Delivery',
     picked_up: 'Picked Up',
-    assigned: 'Assigned',
+    assigned: 'Accepted By Rider',
     pickup: 'Pickup',
     delivery: 'Delivery',
     partially_approved: 'Partially Approved',
@@ -522,18 +543,13 @@ function renderStaffOrders() {
 }
 
 function renderAdminDeliveries() {
-  const availableRiders = state.riders.filter((rider) => rider.login_enabled);
+  const availableRiders = state.riders;
   const riderCards = state.riders.map((rider) =>
-    `<article class="rider-card"><strong>${escapeHtml(rider.rider_name)}</strong><span>${escapeHtml(rider.rider_phone || 'No phone')}</span><span class="status-pill ${rider.status === 'available' ? 'approved' : 'preparing'}">${escapeHtml(statusLabel(rider.status))}</span>${rider.login_enabled ? '' : '<small>Link a rider login to assign orders</small>'}</article>`,
+    `<article class="rider-card"><strong>${escapeHtml(rider.rider_name)}</strong><span>${escapeHtml(rider.rider_email)}</span><span>${escapeHtml(rider.rider_phone || 'No phone')}</span><span class="status-pill ${rider.status === 'available' ? 'approved' : 'preparing'}">${escapeHtml(statusLabel(rider.status))}</span></article>`,
   ).join('');
   const rows = state.deliveryOrders.map((order) => {
     const delivery = order.delivery || {};
     const items = (order.items || []).map((item) => `${item.quantity} × ${escapeHtml(item.title)}`).join(', ');
-    const canAssign = ['ready_for_delivery', 'assigned'].includes(order.status) &&
-      (!delivery.delivery_status || delivery.delivery_status === 'assigned');
-    const assignment = canAssign
-      ? `<div class="rider-assignment"><label for="assign-rider-${escapeHtml(order.id)}">Assign rider</label><select id="assign-rider-${escapeHtml(order.id)}" data-rider-select="${escapeHtml(order.id)}"><option value="">Choose available rider</option>${availableRiders.filter((rider) => rider.status === 'available' || String(rider.id) === String(delivery.rider_id)).map((rider) => `<option value="${escapeHtml(rider.id)}" ${String(rider.id) === String(delivery.rider_id) ? 'selected' : ''}>${escapeHtml(rider.rider_name)} · ${escapeHtml(rider.status)}</option>`).join('')}</select><button class="table-action" data-action="assign-rider" data-id="${escapeHtml(order.id)}">Assign</button></div>`
-      : '';
     const nextDeliveryStatus = {
       assigned: 'picked_up',
       picked_up: 'out_for_delivery',
@@ -548,9 +564,20 @@ function renderAdminDeliveries() {
       ? `<button class="table-action approve-button" data-action="update-admin-delivery" data-status="${nextDeliveryStatus}" data-id="${escapeHtml(delivery.id)}">${stageLabel}</button>`
       : '';
     const timeline = (order.status_history || []).map((entry) => `<li><span>${escapeHtml(statusLabel(entry.status))}</span><time>${escapeHtml(formatDateTime(entry.changed_at))}</time></li>`).join('');
-    return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(formatDateTime(order.created_at))}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></div></div><div class="order-delivery-details"><p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')} · <strong>Phone:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || 'Unassigned')} ${delivery.rider_phone ? `· ${escapeHtml(delivery.rider_phone)}` : ''} ${delivery.rider_availability ? `· ${escapeHtml(statusLabel(delivery.rider_availability))}` : ''}</p><p><strong>ETA:</strong> ${escapeHtml(delivery.estimated_arrival ? formatDateTime(delivery.estimated_arrival) : 'Not set')}</p><p><strong>Items:</strong> ${items || 'Order details unavailable'}</p></div><div class="order-management-actions">${assignment}${stageAction}<button class="table-action" data-action="view-delivery-history" data-id="${escapeHtml(order.id)}">View history</button></div>${timeline ? `<details class="order-history"><summary>Status timeline</summary><ol>${timeline}</ol></details>` : ''}</article>`;
+    return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(formatDateTime(order.created_at))}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></div></div><div class="order-delivery-details"><p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')} · <strong>Phone:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || (order.status === 'ready_for_delivery' ? 'Waiting for a rider to accept' : 'Not assigned'))} ${delivery.rider_phone ? `· ${escapeHtml(delivery.rider_phone)}` : ''} ${delivery.rider_availability ? `· ${escapeHtml(statusLabel(delivery.rider_availability))}` : ''}</p><p><strong>ETA:</strong> ${escapeHtml(delivery.estimated_arrival ? formatDateTime(delivery.estimated_arrival) : 'Not set')}</p><p><strong>Items:</strong> ${items || 'Order details unavailable'}</p></div><div class="order-management-actions">${stageAction}<button class="table-action" data-action="view-delivery-history" data-id="${escapeHtml(order.id)}">View history</button></div>${timeline ? `<details class="order-history"><summary>Status timeline</summary><ol>${timeline}</ol></details>` : ''}</article>`;
   }).join('');
-  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">DELIVERY OPERATIONS</p><h1>Deliveries</h1><p>Assign riders, monitor every delivery, and review status history.</p></div><button class="table-action" data-action="refresh-deliveries">↻ Refresh</button></div><section class="rider-roster"><div class="section-title"><h2>Rider availability</h2><span>${availableRiders.filter((rider) => rider.status === 'available').length} available · ${availableRiders.filter((rider) => rider.status === 'busy').length} busy</span></div>${riderCards ? `<div class="rider-grid">${riderCards}</div>` : '<div class="empty-state">No rider profiles are configured.</div>'}</section><div class="section-title delivery-orders-title"><h2>Home delivery orders</h2><span>${state.deliveryOrders.length} total</span></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No delivery orders yet.</div>'}`;
+  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">DELIVERY OPERATIONS</p><h1>Deliveries</h1><p>Monitor delivery status and rider availability. Riders accept ready orders from Available Deliveries.</p></div><button class="table-action" data-action="refresh-deliveries">↻ Refresh</button></div><section class="rider-roster"><div class="section-title"><h2>Rider availability</h2><span>${availableRiders.filter((rider) => rider.status === 'available').length} available · ${availableRiders.filter((rider) => rider.status === 'busy').length} busy</span></div>${riderCards ? `<div class="rider-grid">${riderCards}</div>` : '<div class="empty-state">No rider profiles are configured.</div>'}</section><div class="section-title delivery-orders-title"><h2>Home delivery orders</h2><span>${state.deliveryOrders.length} total</span></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No delivery orders yet.</div>'}`;
+}
+
+function renderAvailableDeliveries() {
+  const rows = state.availableDeliveries.map((order) => {
+    const items = (order.items || []).map((item) => `${item.quantity} × ${escapeHtml(item.title)}`).join(', ');
+    return `<article class="admin-order-card available-delivery-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(formatDateTime(order.created_at))}</div></div><strong class="order-total">${money(order.total_amount)}</strong></div><div class="order-delivery-details"><p><strong>Deliver to:</strong> ${escapeHtml(order.delivery_address || 'Address missing')}</p><p><strong>Customer phone:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p><p><strong>Order value:</strong> ${money(order.total_amount)}</p><p><strong>Items:</strong> ${items || 'Order details unavailable'}</p></div><div class="order-management-actions"><button class="table-action approve-button" data-action="accept-delivery" data-id="${escapeHtml(order.id)}">Accept Delivery</button></div></article>`;
+  }).join('');
+  const error = state.availableDeliveriesError
+    ? `<p class="tracking-refresh-status error-text" role="status">Live refresh failed: ${escapeHtml(state.availableDeliveriesError)}</p>`
+    : '<p class="tracking-refresh-status" role="status">New ready orders appear automatically every 10 seconds.</p>';
+  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">RIDER DASHBOARD</p><h1>Available Deliveries</h1><p>Review delivery details and accept an order to begin your route.</p>${error}</div><button class="table-action" data-action="refresh-available-deliveries">↻ Refresh</button></div>${rows ? `<div class="available-delivery-list">${rows}</div>` : '<div class="empty-state">No deliveries are available right now. New ready orders will appear here.</div>'}`;
 }
 
 function renderRiderDashboard() {
@@ -558,7 +585,7 @@ function renderRiderDashboard() {
   const rows = state.riderDeliveries.map((order) => {
     const delivery = order.delivery || {};
     const next = { assigned: 'picked_up', picked_up: 'out_for_delivery', out_for_delivery: 'delivered' }[delivery.delivery_status];
-    const label = { picked_up: 'Mark picked up', out_for_delivery: 'Start delivery', delivered: 'Mark delivered' }[next];
+    const label = { picked_up: 'Mark picked up', out_for_delivery: 'Mark out for delivery', delivered: 'Mark delivered' }[next];
     const items = (order.items || []).map((item) => `${item.quantity} × ${escapeHtml(item.title)}`).join(', ');
     const action = next ? `<button class="table-action approve-button" data-action="update-rider-status" data-status="${next}" data-id="${escapeHtml(delivery.id)}">${label}</button>` : '';
     return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.contact_phone || '')}</div></div><span class="status-pill ${escapeHtml(delivery.delivery_status || order.status)}">${escapeHtml(statusLabel(delivery.delivery_status || order.status))}</span></div><div class="order-delivery-details"><p><strong>Deliver to:</strong> ${escapeHtml(order.delivery_address || 'Address missing')}</p><p><strong>Items:</strong> ${items}</p><p><strong>Assigned:</strong> ${escapeHtml(formatDateTime(delivery.assigned_at))}</p></div><div class="order-management-actions">${action}</div></article>`;
@@ -769,26 +796,6 @@ async function updateOrderStage(orderId, status, button) {
   }
 }
 
-async function assignRider(orderId, button) {
-  const select = document.getElementById(`assign-rider-${orderId}`);
-  if (!select || !select.value) {
-    showToast('Choose an available rider');
-    return;
-  }
-  button.disabled = true;
-  try {
-    await api(`/admin/orders/${encodeURIComponent(orderId)}/assign-rider`, {
-      method: 'PUT',
-      body: JSON.stringify({ rider_id: select.value }),
-    });
-    showToast('Rider assigned');
-    await renderPage();
-  } catch (error) {
-    showToast(error.message);
-    button.disabled = false;
-  }
-}
-
 async function updateRiderDelivery(deliveryId, status, button) {
   button.disabled = true;
   try {
@@ -798,6 +805,18 @@ async function updateRiderDelivery(deliveryId, status, button) {
     });
     showToast(`Delivery updated: ${statusLabel(status)}`);
     await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function acceptDelivery(orderId, button) {
+  button.disabled = true;
+  try {
+    await api(`/rider/deliveries/${encodeURIComponent(orderId)}/accept`, { method: 'POST' });
+    showToast('Delivery accepted');
+    setPage('rider-dashboard');
   } catch (error) {
     showToast(error.message);
     button.disabled = false;
@@ -1047,7 +1066,7 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   if (action === 'edit-stock') changeStock(id);
   if (action === 'update-order-item') updateOrderItemStatus(id, target.dataset.status, target);
   if (action === 'update-order-status') updateOrderStage(id, target.dataset.status, target);
-  if (action === 'assign-rider') assignRider(id, target);
+  if (action === 'accept-delivery') acceptDelivery(id, target);
   if (action === 'update-rider-status') updateRiderDelivery(id, target.dataset.status, target);
   if (action === 'update-admin-delivery') updateAdminDelivery(id, target.dataset.status, target);
   if (action === 'view-delivery-history') viewDeliveryHistory(id);
@@ -1061,6 +1080,7 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   if (action === 'refresh-dashboard' || action === 'refresh-my-dishes' || action === 'refresh-my-sales') renderPage();
   if (action === 'refresh-orders' || action === 'refresh-staff-orders') renderPage();
   if (action === 'refresh-deliveries' || action === 'refresh-rider-deliveries') renderPage();
+  if (action === 'refresh-available-deliveries') renderPage();
   if (action === 'retry-menu' || action === 'retry-orders' || action === 'retry-inventory') renderPage();
 });
 document.querySelector('#modal-root').addEventListener('input', (event) => {
@@ -1099,6 +1119,38 @@ document.querySelectorAll('.nav-link').forEach((button) =>
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeCart();
 });
+
+async function refreshLivePageData() {
+  if (state.liveRefreshInFlight) return;
+  const page = state.page;
+  if (page !== 'orders' && page !== 'available-deliveries') return;
+  if (!state.user || (page === 'available-deliveries' && state.user.role !== 'rider')) return;
+  state.liveRefreshInFlight = true;
+  try {
+    if (page === 'orders') {
+      state.orders = await api(`/orders/${encodeURIComponent(state.user.id)}`);
+      state.orderTrackingError = '';
+      if (state.page === page) renderOrders();
+    } else {
+      state.availableDeliveries = await api('/rider/available-deliveries');
+      state.availableDeliveriesError = '';
+      if (state.page === page) renderAvailableDeliveries();
+    }
+  } catch (error) {
+    console.error('LIVE DELIVERY REFRESH ERROR:', error.message);
+    if (page === 'orders') {
+      state.orderTrackingError = error.message;
+      if (state.page === page) renderOrders();
+    } else {
+      state.availableDeliveriesError = error.message;
+      if (state.page === page) renderAvailableDeliveries();
+    }
+  } finally {
+    state.liveRefreshInFlight = false;
+  }
+}
+
+window.setInterval(refreshLivePageData, 10000);
 
 if (state.user && state.user.id && readStorage('yummy-token')) {
   state.cart = readStorage(`yummy-cart-${state.user.id}`) || [];

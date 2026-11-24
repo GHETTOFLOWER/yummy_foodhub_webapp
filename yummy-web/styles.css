@@ -1975,6 +1975,21 @@ input:focus-visible {
   margin-top: 12px;
   padding-top: 15px;
 }
+.tracking-refresh-status {
+  color: var(--muted);
+  font-size: 10px;
+  margin: 8px 0 0;
+}
+.tracking-refresh-status.error-text {
+  color: #a14835;
+}
+.available-delivery-list {
+  display: grid;
+  gap: 14px;
+}
+.available-delivery-card .order-delivery-details {
+  margin: 12px 0;
+}
 .progress-steps {
   align-items: flex-start;
   display: flex;
@@ -2123,20 +2138,12 @@ input:focus-visible {
 .rider-card .status-pill {
   justify-self: start;
 }
-.rider-assignment {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.rider-assignment label,
 .checkout-field,
 .checkout-details legend {
   color: #62665b;
   font-size: 10px;
   font-weight: 700;
 }
-.rider-assignment select,
 .checkout-field input,
 .checkout-field textarea {
   background: white;
@@ -2145,10 +2152,6 @@ input:focus-visible {
   color: var(--ink);
   font: inherit;
   padding: 8px;
-}
-.rider-assignment select {
-  font-size: 10px;
-  max-width: 210px;
 }
 .checkout-details {
   border-bottom: 1px solid var(--line);
@@ -2186,8 +2189,7 @@ input:focus-visible {
   resize: vertical;
 }
 .checkout-field input:focus,
-.checkout-field textarea:focus,
-.rider-assignment select:focus {
+.checkout-field textarea:focus {
   border-color: #a7b193;
   outline: 0;
 }
@@ -2243,12 +2245,5 @@ input:focus-visible {
   .order-management-actions {
     align-items: stretch;
     flex-direction: column;
-  }
-  .rider-assignment {
-    align-items: stretch;
-  }
-  .rider-assignment select {
-    flex: 1;
-    max-width: none;
   }
 }

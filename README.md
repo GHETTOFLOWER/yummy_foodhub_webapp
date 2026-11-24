@@ -97,16 +97,15 @@ The server uses them for accounts, dishes, orders, stock, and reports.
 
 ### Enable delivery and rider accounts
 
-The existing database already stores `orders.delivery_type`, `delivery_address`, and `contact_phone`, along with rider and delivery records. Run [`yummy-backend/delivery-migration.sql`](./yummy-backend/delivery-migration.sql) once before deploying the updated server. It widens role/order status values, links rider profiles to login accounts, adds delivery-stage timestamps, and creates order status history without dropping existing records.
+Run [`yummy-backend/delivery-migration.sql`](./yummy-backend/delivery-migration.sql) once if the database has not already been migrated for delivery support. It widens role/order status values, links and backfills rider profiles to user accounts, automatically creates rider profiles when a user's role becomes `rider`, adds delivery-stage timestamps, and creates order status history without dropping existing records. Apply [`yummy-backend/delivery-claim-migration.sql`](./yummy-backend/delivery-claim-migration.sql) once for rider-claimed deliveries; it adds indexes for the ready-order lookup and claim-conflict check.
 
-Create a rider's login through the normal registration flow, then grant the rider role and link it to a rider profile in MySQL:
+Create a rider's login through the normal registration flow, then grant the rider role in MySQL:
 
 ```sql
 UPDATE users SET role = 'rider' WHERE email = 'rider@example.com';
-UPDATE delivery_riders SET user_id = 123 WHERE id = 1;
 ```
 
-Replace the example IDs with the matching account and rider profile IDs. Riders sign in using Staff / Admin / Rider and see only their assigned deliveries. Admins assign riders from Deliveries; rider availability changes to busy while active assignments remain and returns to available after delivery. Staff/admin manage order stages; riders update assigned delivery stages.
+The rider appears in the admin delivery roster without manually creating or linking a `delivery_riders` row. The roster displays the user's name and email, plus a phone number when one is recorded on the rider profile. When a delivery order is marked ready, it appears in the Available Deliveries page for available riders. The first rider to accept it is assigned atomically; the order disappears from the other riders' lists and the rider remains busy until all active deliveries are complete. Customers' My orders page refreshes delivery progress automatically. Staff/admin manage order stages; riders accept and update their assigned delivery stages.
 
 ---
 
@@ -143,11 +142,12 @@ The server also serves the website, so open the app at `http://localhost:3107`.
 The `render.yaml` file sets up the app on Render.
 
 1. Create a MySQL database and load the core app tables.
-2. Apply `yummy-backend/delivery-migration.sql` to that database once.
-3. Push this project to GitHub.
-4. In Render, create a Blueprint from this project.
-5. Add `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in Render's environment settings.
-6. Deploy. Open `/api/health` to check the server, then open the service URL to use the app.
+2. Apply `yummy-backend/delivery-migration.sql` once if delivery support has not already been enabled.
+3. Apply `yummy-backend/delivery-claim-migration.sql` once.
+4. Push this project to GitHub.
+5. In Render, create a Blueprint from this project.
+6. Add `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in Render's environment settings.
+7. Deploy. Open `/api/health` to check the server, then open the service URL to use the app.
 
 Login sessions are stored in server memory. Restarting the server signs users out. Multiple server copies are not supported.
 
@@ -171,10 +171,11 @@ Main routes:
 - `GET /staff/orders` — review the full order queue
 - `GET /admin/dashboard` — view admin totals and recent orders
 - `GET /admin/deliveries` — view delivery orders, rider availability, and status history
-- `GET /admin/riders` — list rider profiles and linked login status
+- `GET /admin/riders` — list users with the rider role and their availability
 - `GET /admin/riders/available` — list available riders with login accounts
-- `PUT /admin/orders/:id/assign-rider` — assign a rider to a ready delivery order
 - `PUT /admin/deliveries/:deliveryId/status` — administer a delivery stage
+- `GET /rider/available-deliveries` — list ready delivery orders for an available rider
+- `POST /rider/deliveries/:orderId/accept` — atomically accept and assign a ready delivery
 - `GET /rider/deliveries` — view deliveries assigned to the signed-in rider
 - `PUT /rider/deliveries/:deliveryId/status` — update an assigned delivery status
 - `GET /orders/:orderId/delivery-history` — view authorized order and delivery status history
