@@ -21,22 +21,22 @@ app.use(express.json());
 const pool = mysql.createPool(DB_CONFIG);
 const sessions = new Map();
 const defaultMenuSeedName = 'ugandan-dishes';
-const defaultMenuSeedVersion = 5;
+const defaultMenuSeedVersion = 6;
 const defaultMenuDishes = [
-  { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Traditional', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
-  { title: 'Flaky Ugandan Chapati', category: 'Street Food', price: 3000, description: 'Traditional Ugandan chapati, pan-fried until crisp outside and soft inside.', imageUrl: './images/Chapati.jpeg' },
-  { title: 'Kalo, Cassava & Beef Stew', category: 'Traditional', price: 14000, description: 'Millet bread and cassava served with beef stew and steamed greens.', imageUrl: './images/Kalo,Cassava&Beaf Stew.jpeg' },
-  { title: 'Chicken Luwombo with Matooke & Sweet Potato', category: 'Traditional', price: 22000, description: 'Chicken luwombo served with matooke, sweet potatoes, peas, and greens.', imageUrl: './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg' },
-  { title: 'Beef Luwombo with Matooke, Lumonde & Pumpkin', category: 'Traditional', price: 20000, description: 'Beef luwombo served with matooke, pumpkin, rice, greens, and avocado.', imageUrl: './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg' },
-  { title: 'Matooke Katogo with Beef & Butula', category: 'Breakfast', price: 10000, description: 'Matooke katogo simmered with beef and served alongside green pea gravy.', imageUrl: './images/Matooke Katogo with Beef and Butula.jpeg' },
-  { title: 'Matooke Katogo with Tilapia Fish', category: 'Traditional', price: 17000, description: 'Matooke katogo served with tilapia fish, green peas, and fresh avocado.', imageUrl: './images/Matooke Katogo with Tilapia fish.jpeg' },
-  { title: 'Matooke, Mayuni & Byenda', category: 'Traditional', price: 13000, description: 'Matooke and cocoyam served with Ugandan beef tripe stew and greens.', imageUrl: './images/Matooke,Mayuni & Byenda.jpeg' },
-  { title: 'Matooke, Rice & Byenda', category: 'Traditional', price: 12000, description: 'Steamed matooke and rice served with Ugandan beef tripe stew.', imageUrl: './images/Matooke,Rice&Byenda.jpeg' },
-  { title: 'Matooke, Mayuni & Fish Stew', category: 'Traditional', price: 18000, description: 'Matooke and cocoyam served with tilapia stew, green peas, and greens.', imageUrl: './images/MatookeMayuuni and Fish Stew.jpeg' },
-  { title: 'Posho & Tilapia Fish Stew with Greens', category: 'Main Courses', price: 16000, description: 'Ugandan tilapia fish stew served with posho and steamed seasonal greens.', imageUrl: './images/Posho& Tilapia Fish Stew with Greens.jpeg' },
-  { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Lunch', price: 7000, description: 'Posho served with seasoned beans, okra stew, and steamed doodo greens.', imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
-  { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Main Courses', price: 19000, description: 'Steamed rice served with tilapia stew, greens, and fresh fruit juice.', imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
-  { title: 'Whole Fried Tilapia and Chips', category: 'Main Courses', price: 25000, description: 'Whole fried tilapia served with golden chips, fresh vegetables, and lime.', imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
+  { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Local Favorites', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', recipeSteps: ['Boil cassava until tender.', 'Simmer beef and green peas in a seasoned stew; serve with greens.'], imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
+  { title: 'Flaky Ugandan Chapati', category: 'Side Dishes', price: 3000, description: 'Ugandan chapati, crisp outside and soft inside.', recipeSteps: ['Prepare and rest a soft wheat dough.', 'Roll into layers and pan-fry until golden.'], imageUrl: './images/Chapati.jpeg' },
+  { title: 'Kalo, Cassava & Beef Stew', category: 'Local Favorites', price: 14000, description: 'Millet bread and cassava served with beef stew and steamed greens.', recipeSteps: ['Prepare millet bread and boil cassava until tender.', 'Serve with beef stew and steamed greens.'], imageUrl: './images/Kalo,Cassava&Beaf Stew.jpeg' },
+  { title: 'Chicken Luwombo with Matooke & Sweet Potato', category: 'Special Meals', price: 22000, description: 'Chicken luwombo served with matooke, sweet potatoes, peas, and greens.', recipeSteps: ['Season chicken and cook in banana leaves with sauce.', 'Serve with matooke, sweet potato, peas, and greens.'], imageUrl: './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg' },
+  { title: 'Beef Luwombo with Matooke, Lumonde & Pumpkin', category: 'Special Meals', price: 20000, description: 'Beef luwombo served with matooke, pumpkin, rice, greens, and avocado.', recipeSteps: ['Season beef and slow-cook in banana leaves with sauce.', 'Serve with matooke, pumpkin, rice, greens, and avocado.'], imageUrl: './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg' },
+  { title: 'Matooke Katogo with Beef & Butula', category: 'Breakfast', price: 10000, description: 'Matooke katogo simmered with beef and served alongside green pea gravy.', recipeSteps: ['Simmer matooke and beef together until tender.', 'Serve with green pea gravy.'], imageUrl: './images/Matooke Katogo with Beef and Butula.jpeg' },
+  { title: 'Matooke Katogo with Tilapia Fish', category: 'Breakfast', price: 17000, description: 'Matooke katogo served with tilapia fish, green peas, and fresh avocado.', recipeSteps: ['Cook matooke until tender and prepare tilapia separately.', 'Serve with green peas and fresh avocado.'], imageUrl: './images/Matooke Katogo with Tilapia fish.jpeg' },
+  { title: 'Matooke, Mayuni & Byenda', category: 'Local Favorites', price: 13000, description: 'Matooke and cocoyam served with Ugandan beef tripe stew and greens.', recipeSteps: ['Cook beef tripe until tender and prepare seasoned stew.', 'Serve with matooke, cocoyam, and greens.'], imageUrl: './images/Matooke,Mayuni & Byenda.jpeg' },
+  { title: 'Matooke, Rice & Byenda', category: 'Local Favorites', price: 12000, description: 'Steamed matooke and rice served with Ugandan beef tripe stew.', recipeSteps: ['Steam matooke and rice until cooked.', 'Serve with seasoned beef tripe stew.'], imageUrl: './images/Matooke,Rice&Byenda.jpeg' },
+  { title: 'Matooke, Mayuni & Fish Stew', category: 'Local Favorites', price: 18000, description: 'Matooke and cocoyam served with tilapia stew, green peas, and greens.', recipeSteps: ['Prepare tilapia in a seasoned stew.', 'Serve with matooke, cocoyam, green peas, and greens.'], imageUrl: './images/MatookeMayuuni and Fish Stew.jpeg' },
+  { title: 'Posho & Tilapia Fish Stew with Greens', category: 'Main Courses', price: 16000, description: 'Ugandan tilapia fish stew served with posho and steamed seasonal greens.', recipeSteps: ['Prepare tilapia stew with vegetables and seasoning.', 'Serve with posho and steamed greens.'], imageUrl: './images/Posho& Tilapia Fish Stew with Greens.jpeg' },
+  { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Main Courses', price: 7000, description: 'Posho served with seasoned beans, okra stew, and steamed doodo greens.', recipeSteps: ['Simmer beans and okra with seasoning until tender.', 'Serve with posho and steamed doodo.'], imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
+  { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Main Courses', price: 19000, description: 'Steamed rice served with tilapia stew, greens, and fresh fruit juice.', recipeSteps: ['Steam rice and prepare tilapia stew with greens.', 'Serve with fresh fruit juice.'], imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
+  { title: 'Whole Fried Tilapia and Chips', category: 'Special Meals', price: 25000, description: 'Whole fried tilapia served with golden chips, fresh vegetables, and lime.', recipeSteps: ['Season and fry tilapia until cooked through.', 'Serve with chips, fresh vegetables, and lime.'], imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
 ];
 
 function getDefaultMenuRows(rows) {
@@ -47,7 +47,12 @@ function getDefaultMenuRows(rows) {
       dishesByTitle.set(row.title, row);
     }
   }
-  const menu = defaultMenuDishes.map((dish) => dishesByTitle.get(dish.title)).filter(Boolean);
+  const menu = defaultMenuDishes
+    .map((dish) => {
+      const row = dishesByTitle.get(dish.title);
+      return row ? { ...row, recipe_steps: dish.recipeSteps } : null;
+    })
+    .filter(Boolean);
   if (menu.length !== defaultMenuDishes.length) {
     throw new Error('The default menu seed is incomplete (' + menu.length + '/' + defaultMenuDishes.length + ' dishes)');
   }

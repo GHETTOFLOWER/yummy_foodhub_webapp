@@ -3,38 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f7f5ed" />
-    <meta name="description" content="HIGHER LEVEL Restaurant & Takeaway Uganda. View the food menu and place pickup or delivery orders." />
+    <meta name="theme-color" content="#234b38" />
+    <meta name="description" content="HIGHER LEVEL Restaurant & Takeaway Uganda. Freshly prepared meals for dine-in, takeaway, and delivery." />
     <title>HIGHER LEVEL Restaurant &amp; Takeaway Uganda</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <script src="app.js" defer></script>
   </head>
   <body>
     <main id="auth-view" class="auth-layout">
-      <section class="auth-story" aria-label="Higher Level Restaurant and Takeaway Uganda">
-        <div class="brand brand-light">
-          <img class="brand-logo" src="./images/logo.jpg" alt="Higher Level logo" />
-          <span class="brand-copy"><strong>HIGHER LEVEL</strong><small>Restaurant &amp; Takeaway Uganda</small></span>
+      <header class="auth-header">
+        <div class="auth-header-inner">
+          <div class="brand brand-light auth-brand">
+            <img class="brand-logo" src="./images/logo.jpg" alt="Higher Level Restaurant logo" />
+            <span class="brand-copy"><strong>HIGHER LEVEL</strong><small>Restaurant &amp; Takeaway Uganda</small></span>
+          </div>
+          <div class="auth-offer">
+            <h1>Freshly Prepared Meals</h1>
+            <p>Dine-In <span aria-hidden="true">•</span> Takeaway <span aria-hidden="true">•</span> Delivery</p>
+          </div>
         </div>
-        <div class="story-copy">
-          <p class="eyebrow">UGANDAN RESTAURANT &amp; TAKEAWAY</p>
-          <h1>Ugandan meals.<br /><em>Pickup &amp; delivery.</em></h1>
-          <p>View the food menu and place an order for pickup or delivery.</p>
-        </div>
-        <div class="story-note"><span class="note-dot"></span> Pickup and delivery orders available.</div>
-        <div class="story-photo" role="img" aria-label="Restaurant meal"></div>
-      </section>
-      <section class="auth-panel">
-        <div class="auth-mobile-brand brand">
-          <img class="brand-logo" src="./images/logo.jpg" alt="Higher Level logo" />
-          <span class="brand-copy"><strong>HIGHER LEVEL</strong><small>Restaurant &amp; Takeaway Uganda</small></span>
-        </div>
+      </header>
+      <section class="auth-panel" aria-label="Customer and staff sign in">
         <div class="auth-card">
           <div class="auth-mode-toggle" role="group" aria-label="Choose sign-in type">
             <button class="active" type="button" data-auth-mode="customer" aria-pressed="true">Customer</button>
@@ -71,8 +63,8 @@
             <button id="auth-switch" class="text-button" type="button">Create an account</button>
           </p>
         </div>
-        <p class="auth-footnote">HIGHER LEVEL · Restaurant &amp; Takeaway Uganda</p>
       </section>
+      <footer class="auth-footer"><strong>HIGHER LEVEL</strong> · Restaurant &amp; Takeaway Uganda</footer>
     </main>
 
     <div id="app-view" class="app-layout hidden">
@@ -84,7 +76,7 @@
         <div class="sidebar-label">NAVIGATION</div>
         <nav id="customer-nav" class="nav-list" aria-label="Main navigation">
           <button class="nav-link active" data-page="menu"><span class="nav-icon"></span>Menu</button>
-          <button class="nav-link" data-page="orders"><span class="nav-icon"></span>My Orders</button>
+          <button class="nav-link" data-page="orders"><span class="nav-icon"></span>Orders</button>
         </nav>
         <nav id="staff-nav" class="nav-list hidden" aria-label="Staff navigation">
           <button class="nav-link active" data-page="dashboard"><span class="nav-icon"></span>Dashboard</button>
@@ -100,7 +92,7 @@
         </nav>
         <nav id="rider-nav" class="nav-list hidden" aria-label="Rider navigation">
           <button class="nav-link active" data-page="available-deliveries"><span class="nav-icon"></span>Available Deliveries</button>
-          <button class="nav-link" data-page="rider-dashboard"><span class="nav-icon"></span>Assigned Deliveries</button>
+          <button class="nav-link" data-page="rider-dashboard"><span class="nav-icon"></span>My Deliveries</button>
         </nav>
         <div class="sidebar-bottom">
           <div class="account-row">
@@ -135,7 +127,7 @@
           <div class="topbar-actions">
             <span class="today-label" id="today-label"></span
             ><button id="cart-open" class="cart-button">
-              <span class="cart-bag" aria-hidden="true">▱</span> Order Summary
+              <span class="cart-bag" aria-hidden="true">▱</span> Cart
               <span class="cart-count" id="cart-count">0</span>
             </button>
           </div>

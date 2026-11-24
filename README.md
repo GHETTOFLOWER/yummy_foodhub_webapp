@@ -4,7 +4,8 @@ HIGHER LEVEL Restaurant & Takeaway Uganda is a food ordering and delivery platfo
 
 ## Features
 
-- Customers can register, sign in, browse and search the menu, place pickup or delivery orders, and track order history.
+- Customers can register, sign in, browse and search the menu, place takeaway or delivery orders, and track order history.
+- Each fixed menu item has a read-only recipe and preparation section, separate from its concise menu description.
 - Staff and admins manage inventory, order stages, delivery operations, rider availability, and the dashboard.
 - Riders view ready deliveries, accept a delivery, and update it through pickup, in-transit, and completion stages.
 - Delivery claims are serialized so only one rider can accept an order. Riders become unavailable while they have active deliveries and available again when all active deliveries are complete.
@@ -39,7 +40,7 @@ Apply the migrations in order:
 
 The cleanup migration removes legacy menu and order fields and an unused table. Back up the database before applying it.
 
-The server seeds the standard 14-item menu and preserves existing stock and order history. It also creates a missing `image_url` column when needed.
+The customer menu uses the categories Main Courses, Local Favorites, Breakfast, Beverages, Special Meals, and Side Dishes; categories without current dishes show an empty state. The server preserves existing stock and order history, and creates a missing `image_url` column when needed. Recipe and preparation details are provided read-only for the fixed menu.
 
 ### Accounts and roles
 

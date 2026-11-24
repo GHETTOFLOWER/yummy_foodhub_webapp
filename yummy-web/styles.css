@@ -1,14 +1,14 @@
 :root {
   color-scheme: light;
-  --paper: #f7f5ed;
-  --white: #fffefa;
-  --ink: #252820;
-  --muted: #84877d;
-  --line: #e8e7de;
-  --tomato: #d94b35;
-  --tomato-dark: #b83a28;
-  --olive: #63734a;
-  --shadow: 0 18px 55px rgba(40, 42, 31, 0.08);
+  --paper: #f5f4ee;
+  --white: #ffffff;
+  --ink: #202c25;
+  --muted: #6e7a71;
+  --line: #e0e5df;
+  --tomato: #b58a45;
+  --tomato-dark: #8d672b;
+  --olive: #234b38;
+  --shadow: 0 14px 40px rgba(32, 44, 37, 0.1);
   font-family: 'DM Sans', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -30,7 +30,7 @@ input {
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 3px solid rgba(217, 75, 53, 0.32);
+  outline: 3px solid rgba(181, 138, 69, 0.38);
   outline-offset: 2px;
 }
 .hidden {
@@ -87,116 +87,69 @@ input:focus-visible {
 
 .auth-layout {
   display: grid;
-  grid-template-columns: minmax(420px, 1.08fr) 1fr;
+  grid-template-rows: auto 1fr auto;
   min-height: 100vh;
 }
-.auth-story {
-  background: #66724c;
+.auth-header {
+  background: var(--olive);
   color: #fff;
+  padding: 22px clamp(20px, 5vw, 72px);
+}
+.auth-header-inner {
+  align-items: center;
   display: flex;
-  flex-direction: column;
+  gap: 30px;
   justify-content: space-between;
-  min-height: 100vh;
-  overflow: hidden;
-  padding: 38px clamp(30px, 5.5vw, 88px) 32px;
-  position: relative;
-}
-.auth-story::before {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.15) 0.75px, transparent 0.75px);
-  background-size: 8px 8px;
-  content: '';
-  inset: 0;
-  opacity: 0.24;
-  pointer-events: none;
-  position: absolute;
-}
-.auth-story::after {
-  border: 1px solid rgba(255, 255, 255, 0.17);
-  border-radius: 50%;
-  content: '';
-  height: 410px;
-  position: absolute;
-  right: -230px;
-  top: 19%;
-  width: 410px;
+  margin: 0 auto;
+  max-width: 1160px;
 }
 .brand-light {
-  color: white;
-  position: relative;
-  z-index: 2;
+  color: #fff;
 }
 .brand-light .brand-copy small {
   color: rgba(255, 255, 255, 0.78);
 }
-.story-copy {
-  margin: 48px 0 20px;
-  max-width: 440px;
-  position: relative;
-  z-index: 1;
+.auth-brand .brand-logo {
+  height: 72px;
+  width: 72px;
 }
-.story-copy .eyebrow {
-  color: #e9d896;
+.auth-brand .brand-copy strong {
+  font-size: 13px;
 }
-.story-copy h1 {
-  font-family: 'Fraunces', serif;
-  font-size: 68px;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 0.98;
-  margin: 0 0 23px;
+.auth-brand .brand-copy small {
+  font-size: 11px;
 }
-.story-copy h1 em {
-  color: #f0db9d;
-  font-weight: 600;
+.auth-offer {
+  text-align: right;
 }
-.story-copy > p:last-child {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 15px;
-  line-height: 1.8;
+.auth-offer h1 {
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0 0 9px;
+}
+.auth-offer p {
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.25px;
   margin: 0;
-  max-width: 310px;
-}
-.story-note {
-  align-items: center;
-  color: rgba(255, 255, 255, 0.82);
-  display: flex;
-  font-size: 12px;
-  gap: 10px;
-  margin-top: auto;
-  position: relative;
-  z-index: 1;
-}
-.note-dot {
-  background: #f0db9d;
-  border-radius: 50%;
-  height: 7px;
-  width: 7px;
-}
-.story-photo {
-  background:
-    linear-gradient(90deg, rgba(102, 114, 76, 0.1), rgba(102, 114, 76, 0)),
-    url('https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1000&q=85') center 54% / cover;
-  border: 8px solid rgba(255, 255, 255, 0.14);
-  border-radius: 48% 48% 6px 6px;
-  bottom: 40px;
-  height: 190px;
-  opacity: 0.94;
-  position: absolute;
-  right: 30px;
-  transform: rotate(3deg);
-  width: 220px;
 }
 .auth-panel {
   align-items: center;
-  background: #fcfbf7;
+  background: var(--paper);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 48px 30px;
-  position: relative;
+  padding: 48px 20px;
 }
 .auth-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
   max-width: 390px;
+  padding: 32px;
   width: 100%;
 }
 .auth-mode-toggle {
@@ -228,9 +181,8 @@ input:focus-visible {
   color: #4e5d39;
 }
 .auth-card h2 {
-  font-family: 'Fraunces', serif;
-  font-size: 42px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
   letter-spacing: 0;
   margin: 0 0 9px;
 }
@@ -325,15 +277,18 @@ input:focus-visible {
   font-weight: 700;
   padding: 0 0 0 4px;
 }
-.auth-footnote {
-  bottom: 24px;
-  color: #a0a197;
+.auth-footer {
+  background: var(--white);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
   font-size: 10px;
   letter-spacing: 0.3px;
-  position: absolute;
+  padding: 16px 20px;
+  text-align: center;
 }
-.auth-mobile-brand {
-  display: none;
+.auth-footer strong {
+  color: var(--ink);
+  letter-spacing: 0.8px;
 }
 
 .app-layout {
@@ -413,7 +368,6 @@ input:focus-visible {
   color: #874b32;
   display: flex;
   flex: 0 0 34px;
-  font-family: 'Fraunces', serif;
   font-size: 15px;
   height: 34px;
   justify-content: center;
@@ -595,9 +549,8 @@ input:focus-visible {
   margin-bottom: 9px;
 }
 .page-heading h1 {
-  font-family: 'Fraunces', serif;
-  font-size: 42px;
-  font-weight: 600;
+  font-size: 34px;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.08;
   margin: 0;
@@ -619,31 +572,6 @@ input:focus-visible {
   gap: 6px;
   min-width: 0;
 }
-.source-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.source-button {
-  background: #fffefa;
-  border: 1px solid #e4e4da;
-  border-radius: 3px;
-  color: #73766c;
-  cursor: pointer;
-  font-size: 9px;
-  font-weight: 700;
-  min-height: 28px;
-  padding: 0 10px;
-}
-.source-button:hover {
-  border-color: #cdd1c2;
-  color: #4d5c39;
-}
-.source-button.active {
-  background: #66724c;
-  border-color: #66724c;
-  color: white;
-}
 .category-list {
   display: flex;
   flex-wrap: wrap;
@@ -655,7 +583,7 @@ input:focus-visible {
   border-radius: 20px;
   color: #777a70;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   min-height: 31px;
   padding: 0 12px;
@@ -665,8 +593,8 @@ input:focus-visible {
   color: var(--ink);
 }
 .category-button.active {
-  background: #e9ecdf;
-  color: #53613d;
+  background: var(--olive);
+  color: #fff;
 }
 .search-box {
   align-items: center;
@@ -686,7 +614,7 @@ input:focus-visible {
 .search-box input {
   background: transparent;
   border: 0;
-  font-size: 10px;
+  font-size: 12px;
   min-width: 0;
   outline: 0;
   width: 100%;
@@ -701,15 +629,14 @@ input:focus-visible {
   margin: 25px 0 13px;
 }
 .section-title h2 {
-  font-family: 'Fraunces', serif;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0;
   margin: 0;
 }
 .section-title span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .menu-grid {
   display: grid;
@@ -718,8 +645,8 @@ input:focus-visible {
 }
 .food-card {
   background: var(--white);
-  border: 1px solid #edede5;
-  border-radius: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   min-width: 0;
   overflow: hidden;
   transition:
@@ -734,7 +661,7 @@ input:focus-visible {
   background-color: #e5e3d6;
   background-position: center;
   background-size: cover;
-  height: 155px;
+  height: 185px;
   position: relative;
 }
 .food-photo::after {
@@ -745,9 +672,9 @@ input:focus-visible {
 }
 .food-tag {
   background: rgba(255, 254, 250, 0.93);
-  border-radius: 3px;
-  color: #626658;
-  font-size: 9px;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 10px;
   font-weight: 700;
   left: 11px;
   padding: 6px 8px;
@@ -756,7 +683,7 @@ input:focus-visible {
   z-index: 1;
 }
 .food-body {
-  padding: 13px 14px 14px;
+  padding: 16px;
 }
 .food-title-row {
   align-items: flex-start;
@@ -765,10 +692,9 @@ input:focus-visible {
   justify-content: space-between;
 }
 .food-title {
-  font-family: 'Fraunces', serif;
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.16;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
   margin: 0;
 }
 .food-price {
@@ -778,11 +704,31 @@ input:focus-visible {
   white-space: nowrap;
 }
 .food-description {
-  color: #85877e;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.55;
   margin: 8px 0 13px;
-  min-height: 30px;
+  min-height: 38px;
+}
+.recipe-details {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0 0 13px;
+  padding-top: 10px;
+}
+.recipe-details summary {
+  color: var(--olive);
+  cursor: pointer;
+  font-weight: 700;
+}
+.recipe-details ol {
+  line-height: 1.55;
+  margin: 8px 0 0;
+  padding-left: 19px;
+}
+.recipe-details li + li {
+  margin-top: 4px;
 }
 .food-footer {
   align-items: center;
@@ -793,7 +739,7 @@ input:focus-visible {
 }
 .stock-label {
   color: var(--olive);
-  font-size: 9px;
+  font-size: 10px;
 }
 .stock-label.out {
   color: var(--tomato-dark);
@@ -806,11 +752,11 @@ input:focus-visible {
   color: #4b5838;
   cursor: pointer;
   display: inline-flex;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   gap: 6px;
-  height: 29px;
-  padding: 0 9px;
+  height: 32px;
+  padding: 0 11px;
 }
 .add-button:hover {
   background: #dfe4d3;
@@ -879,8 +825,8 @@ input:focus-visible {
   min-height: 67px;
 }
 .inventory-name {
-  font-family: 'Fraunces', serif;
   font-size: 15px;
+  font-weight: 600;
 }
 .inventory-meta {
   color: var(--muted);
@@ -1099,9 +1045,8 @@ input:focus-visible {
   font-size: 10px;
 }
 .dashboard-stat strong {
-  font-family: 'Fraunces', serif;
   font-size: 25px;
-  font-weight: 600;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 .dashboard-actions {
@@ -1187,9 +1132,8 @@ input:focus-visible {
   margin-bottom: 8px;
 }
 .drawer-head h2 {
-  font-family: 'Fraunces', serif;
   font-size: 27px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0;
   margin: 0;
 }
@@ -1220,7 +1164,6 @@ input:focus-visible {
   padding: 16px 0;
 }
 .cart-line h3 {
-  font-family: 'Fraunces', serif;
   font-size: 15px;
   font-weight: 600;
   margin: 0 0 5px;
@@ -1320,9 +1263,6 @@ input:focus-visible {
   .food-photo {
     height: 175px;
   }
-  .story-copy h1 {
-    font-size: 54px;
-  }
   .table-head,
   .inventory-row {
     grid-template-columns: minmax(150px, 1fr) 100px 115px 90px;
@@ -1330,30 +1270,32 @@ input:focus-visible {
   }
 }
 @media (max-width: 760px) {
-  .auth-layout {
-    grid-template-columns: 1fr;
+  .auth-header {
+    padding: 22px 18px;
   }
-  .auth-story {
-    display: none;
+  .auth-header-inner {
+    flex-direction: column;
+    gap: 18px;
+  }
+  .auth-brand .brand-logo {
+    height: 58px;
+    width: 58px;
+  }
+  .auth-offer {
+    text-align: center;
+  }
+  .auth-offer h1 {
+    font-size: 23px;
+    margin-bottom: 6px;
+  }
+  .auth-offer p {
+    font-size: 12px;
   }
   .auth-panel {
-    align-items: stretch;
-    min-height: 100vh;
-    padding: 30px 25px 58px;
-  }
-  .auth-mobile-brand {
-    display: flex;
-    margin: 0 0 auto;
+    padding: 28px 18px;
   }
   .auth-card {
-    margin: auto;
-    padding: 42px 0;
-  }
-  .auth-footnote {
-    bottom: 19px;
-    left: 0;
-    right: 0;
-    text-align: center;
+    padding: 25px 20px;
   }
   .sidebar {
     border-bottom: 1px solid var(--line);
@@ -1491,7 +1433,7 @@ input:focus-visible {
     font-size: 10px;
   }
   .food-description {
-    font-size: 9px;
+    font-size: 11px;
   }
   .food-footer {
     align-items: flex-start;

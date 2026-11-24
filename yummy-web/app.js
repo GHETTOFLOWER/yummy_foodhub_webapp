@@ -39,6 +39,15 @@ const defaultMenuTitles = [
   'Whole Fried Tilapia and Chips',
 ];
 
+const menuCategories = [
+  'Main Courses',
+  'Local Favorites',
+  'Breakfast',
+  'Beverages',
+  'Special Meals',
+  'Side Dishes',
+];
+
 const imageChoices = [
   './images/Boiled Cassava & Beef-Pea Stew.jpeg',
   './images/Chapati.jpeg',
@@ -226,14 +235,14 @@ async function renderPage() {
   const content = document.querySelector('#page-content');
   const crumb = document.querySelector('#page-crumb');
   const pages = {
-    menu: 'Food Menu',
-    orders: 'My Orders',
+    menu: 'Menu',
+    orders: 'Orders',
     inventory: 'Inventory',
     'staff-orders': 'Orders',
     dashboard: 'Dashboard',
     'admin-deliveries': 'Deliveries',
     'available-deliveries': 'Available Deliveries',
-    'rider-dashboard': 'Assigned Deliveries',
+    'rider-dashboard': 'My Deliveries',
   };
   crumb.textContent = pages[state.page] || 'Menu';
   if (state.page === 'menu') {
@@ -321,7 +330,7 @@ async function renderPage() {
 }
 
 function renderMenu() {
-  const categories = ['All', ...new Set(state.menu.map((item) => item.category).filter(Boolean))];
+  const categories = ['All', ...menuCategories];
   if (!categories.includes(state.category)) state.category = 'All';
   const filtered = state.menu.filter((item) => {
     const matchesCategory = state.category === 'All' || item.category === state.category;
@@ -340,21 +349,25 @@ function renderMenu() {
       const outOfStock = Number(item.stock_quantity) <= 0;
       const imageUrl = item.image_url || imageChoices[index % imageChoices.length];
       const safeImageUrl = String(imageUrl).replace(/['"]/g, '\\$&');
+      const recipe = Array.isArray(item.recipe_steps) && item.recipe_steps.length
+        ? `<details class="recipe-details"><summary>Recipe &amp; Preparation</summary><ol>${item.recipe_steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`
+        : '';
       return `<article class="food-card">
       <div class="food-photo" style="background-image:url('${safeImageUrl}')"><span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-description">${escapeHtml(item.description || 'Description unavailable.')}</p>
+      ${recipe}
       <div class="food-footer"><span class="stock-label ${outOfStock ? 'out' : ''}">${outOfStock ? 'Out of stock' : `In stock · ${Number(item.stock_quantity)} available`}</span>
-      <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add to Order'}</button></div></div>
+      <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add to Cart'}</button></div></div>
     </article>`;
     })
     .join('');
   document.querySelector('#page-content').innerHTML = `
-    <div class="page-heading"><div><p class="eyebrow">HIGHER LEVEL RESTAURANT & TAKEAWAY UGANDA</p><h1>Food Menu</h1><p>Browse meals available for pickup and delivery.</p></div></div>
+    <div class="page-heading"><div><p class="eyebrow">HIGHER LEVEL RESTAURANT & TAKEAWAY UGANDA</p><h1>Menu</h1><p>Browse the current restaurant menu.</p></div></div>
     <div class="menu-tools"><div class="menu-filters"><div class="category-list">${categories.map((category) => `<button class="category-button ${category === state.category ? 'active' : ''}" data-action="category" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}</div></div>
     <label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input id="menu-search" type="search" value="${escapeHtml(state.search)}" placeholder="Search the menu" aria-label="Search menu"></label></div>
-    <div class="section-title"><h2>${state.category === 'All' ? 'Special Meals' : escapeHtml(state.category)}</h2><span>${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}</span></div>
-    ${filtered.length ? `<div class="menu-grid">${cards}</div>` : '<div class="empty-state">No menu items match your search. Adjust the search or category.</div>'}`;
+    <div class="section-title"><h2>${state.category === 'All' ? 'All Menu Items' : escapeHtml(state.category)}</h2><span>${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}</span></div>
+    ${filtered.length ? `<div class="menu-grid">${cards}</div>` : `<div class="empty-state">${state.search ? 'No menu items match your search.' : `No items are currently listed under ${escapeHtml(state.category)}.`}</div>`}`;
 }
 
 function renderOrders() {
@@ -378,14 +391,14 @@ function renderOrders() {
         .join('');
       const detail = order.delivery_type === 'delivery'
         ? `<p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || 'Awaiting rider acceptance')}</p>`
-        : '<p><strong>Pickup Order:</strong> Collect your order after its status changes to Picked Up.</p>';
+        : '<p><strong>Takeaway Order:</strong> Collect your order when it is ready.</p>';
       return `<article class="tracked-order"><div class="tracked-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)} · ${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</div></div><div class="tracked-order-total"><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-items">${items || 'Order details unavailable'}</div><section class="delivery-progress" aria-label="Order progress">${renderOrderProgress(order)}</section><div class="order-delivery-details">${detail}<p><strong>Contact:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p></div>${history ? `<details class="order-history"><summary>Order and delivery history</summary><ol>${history}</ol></details>` : ''}</article>`;
     })
     .join('');
   const liveStatus = state.orderTrackingError
     ? `<p class="tracking-refresh-status error-text" role="status">Delivery tracking refresh failed: ${escapeHtml(state.orderTrackingError)}</p>`
     : '<p class="tracking-refresh-status" role="status">Delivery tracking updates automatically every 10 seconds.</p>';
-  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">ORDER HISTORY</p><h1>My Orders</h1><p>View order status and delivery progress.</p>${liveStatus}</div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="tracked-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed. Browse the menu to place your first order.</div>'}`;
+  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">ORDER HISTORY</p><h1>Orders</h1><p>Review your orders and delivery tracking.</p>${liveStatus}</div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="tracked-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed. Browse the menu to place an order.</div>'}`;
 }
 
 function statusLabel(status) {
@@ -394,7 +407,7 @@ function statusLabel(status) {
     out_for_delivery: 'Out For Delivery',
     picked_up: 'Picked Up',
     assigned: 'Accepted By Rider',
-    pickup: 'Pickup',
+    pickup: 'Takeaway',
     delivery: 'Delivery',
     partially_approved: 'Partially Approved',
     partially_completed: 'Partially Completed',
@@ -529,7 +542,7 @@ function renderRiderDashboard() {
     const action = next ? `<button class="table-action approve-button" data-action="update-rider-status" data-status="${next}" data-id="${escapeHtml(delivery.id)}">${label}</button>` : '';
     return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.contact_phone || '')}</div></div><span class="status-pill ${escapeHtml(delivery.delivery_status || order.status)}">${escapeHtml(statusLabel(delivery.delivery_status || order.status))}</span></div><div class="order-delivery-details"><p><strong>Deliver to:</strong> ${escapeHtml(order.delivery_address || 'Address missing')}</p><p><strong>Items:</strong> ${items}</p><p><strong>Assigned:</strong> ${escapeHtml(formatDateTime(delivery.assigned_at))}</p></div><div class="order-management-actions">${action}</div></article>`;
   }).join('');
-  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">RIDER OPERATIONS</p><h1>Assigned Deliveries</h1><p>${active.length} active ${active.length === 1 ? 'delivery is' : 'deliveries are'} assigned to you.</p></div><button class="table-action" data-action="refresh-rider-deliveries">↻ Refresh</button></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No deliveries are assigned to your rider account.</div>'}`;
+  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">RIDER OPERATIONS</p><h1>My Deliveries</h1><p>${active.length} active ${active.length === 1 ? 'delivery is' : 'deliveries are'} assigned to you.</p></div><button class="table-action" data-action="refresh-rider-deliveries">↻ Refresh</button></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No deliveries are assigned to your rider account.</div>'}`;
 }
 
 function renderInventory() {
@@ -596,7 +609,7 @@ function renderCart() {
     )
     .join('');
   const checkout = state.checkout;
-  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">ORDER SUMMARY</p><h2 id="cart-title">Order Summary <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close order summary">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="checkout-details"><fieldset><legend>Pickup or delivery?</legend><label><input type="radio" name="delivery_type" value="pickup" ${checkout.deliveryType === 'pickup' ? 'checked' : ''}> Pickup</label><label><input type="radio" name="delivery_type" value="delivery" ${checkout.deliveryType === 'delivery' ? 'checked' : ''}> Delivery</label></fieldset>${checkout.deliveryType === 'delivery' ? `<label class="checkout-field">Delivery address<textarea name="delivery_address" maxlength="255" rows="2" placeholder="Street, area, and directions" required>${escapeHtml(checkout.address)}</textarea></label><label class="checkout-field">Contact phone<input name="contact_phone" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" value="${escapeHtml(checkout.phone)}" required></label>` : ''}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">In-stock items are confirmed automatically. Items requiring staff review remain pending.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place Order</button></div>` : '<div class="cart-empty">Your order is empty. Add menu items to continue.</div>'}</section></div>`;
+  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">CART</p><h2 id="cart-title">Cart <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close cart">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="checkout-details"><fieldset><legend>Order Type</legend><label><input type="radio" name="delivery_type" value="pickup" ${checkout.deliveryType === 'pickup' ? 'checked' : ''}> Takeaway</label><label><input type="radio" name="delivery_type" value="delivery" ${checkout.deliveryType === 'delivery' ? 'checked' : ''}> Delivery</label></fieldset>${checkout.deliveryType === 'delivery' ? `<label class="checkout-field">Delivery address<textarea name="delivery_address" maxlength="255" rows="2" placeholder="Street, area, and directions" required>${escapeHtml(checkout.address)}</textarea></label><label class="checkout-field">Contact phone<input name="contact_phone" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" value="${escapeHtml(checkout.phone)}" required></label>` : ''}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">In-stock items are confirmed automatically. Items requiring staff review remain pending.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place Order</button></div>` : '<div class="cart-empty">Your cart is empty. Add menu items to continue.</div>'}</section></div>`;
 }
 
 function closeCart() {
