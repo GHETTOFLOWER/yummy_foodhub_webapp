@@ -987,7 +987,7 @@ async function submitAuth(event) {
 
 async function submitCateringRequest(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target;
   const submit = form.querySelector('[type="submit"]');
   const errorMessage = form.querySelector('#catering-form-error');
   const values = new FormData(form);
