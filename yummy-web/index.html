@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#234b38" />
+    <meta name="theme-color" content="#8A2BE2" />
     <meta name="description" content="HIGHER LEVEL Restaurant & Takeaway Uganda. Freshly prepared meals for dine-in, takeaway, and delivery." />
     <title>HIGHER LEVEL Restaurant &amp; Takeaway Uganda</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -69,10 +69,6 @@
 
     <div id="app-view" class="app-layout hidden">
       <aside class="sidebar">
-        <a class="brand" href="#menu" aria-label="Higher Level Restaurant and Takeaway Uganda home">
-          <img class="brand-logo" src="./images/logo.jpg" alt="Higher Level logo" />
-          <span class="brand-copy"><strong>HIGHER LEVEL</strong><small>Restaurant &amp; Takeaway Uganda</small></span>
-        </a>
         <div class="sidebar-label">NAVIGATION</div>
         <nav id="customer-nav" class="nav-list" aria-label="Main navigation">
           <button class="nav-link active" data-page="menu"><span class="nav-icon"></span>Menu</button>
@@ -118,11 +114,14 @@
             >
               Back
             </button>
-            <div class="breadcrumbs">
+            <a class="header-brand" href="#menu" aria-label="Higher Level Restaurant and Takeaway Uganda home">
               <img class="header-logo" src="./images/logo.jpg" alt="" />
-              <span class="header-brand-name">HIGHER LEVEL Restaurant &amp; Takeaway Uganda</span>
-              <span class="crumb-sep">/</span><strong id="page-crumb">Menu</strong>
-            </div>
+              <span class="header-brand-copy">
+                <strong>HIGHER LEVEL</strong>
+                <small>Restaurant &amp; Takeaway Uganda</small>
+              </span>
+            </a>
+            <strong id="page-crumb" class="header-page-label">Menu</strong>
           </div>
           <div class="topbar-actions">
             <span class="today-label" id="today-label"></span
