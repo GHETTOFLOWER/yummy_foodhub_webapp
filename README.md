@@ -1,6 +1,6 @@
-# Yummy Food Hub
+# Higher Level Restaurant & Takeaway Uganda
 
-Yummy Food Hub is a food ordering and delivery platform built with HTML, CSS, vanilla JavaScript, Node.js, Express, and MySQL.
+Higher Level Restaurant & Takeaway Uganda is a food ordering and delivery platform built with HTML, CSS, vanilla JavaScript, Node.js, Express, and MySQL.
 
 ## Features
 

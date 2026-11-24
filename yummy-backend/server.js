@@ -443,7 +443,7 @@ async function updateOrderLifecycle(connection, order, nextStatus, user) {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ message: 'Yummy Food Hub API is running' });
+  res.json({ message: 'Higher Level Restaurant & Takeaway Uganda API is running' });
 });
 
 app.post('/register', async (req, res) => {
