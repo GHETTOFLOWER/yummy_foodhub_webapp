@@ -5,6 +5,9 @@ const state = {
   inventory: [],
   orders: [],
   staffOrders: [],
+  deliveryOrders: [],
+  riders: [],
+  riderDeliveries: [],
   myDishes: [],
   dashboard: null,
   sellerDashboard: null,
@@ -16,6 +19,7 @@ const state = {
   registering: false,
   authMode: 'customer',
   recipeSource: 'community',
+  checkout: { deliveryType: 'pickup', address: '', phone: '' },
 };
 
 const defaultMenuTitles = [
@@ -144,11 +148,11 @@ function updateAuthForm() {
   const password = document.querySelector('[name="password"]');
   nameField.classList.toggle('hidden', !state.registering || staffMode);
   title.textContent = state.registering ? 'Make yourself at home.' : staffMode ? 'Welcome, team.' : 'Come on in.';
-  eyebrow.textContent = state.registering ? 'A SEAT IS WAITING' : staffMode ? 'STAFF & ADMIN ACCESS' : 'WELCOME BACK';
+  eyebrow.textContent = state.registering ? 'A SEAT IS WAITING' : staffMode ? 'STAFF, ADMIN & RIDER ACCESS' : 'WELCOME BACK';
   intro.textContent = state.registering
     ? 'Create an account and find your new favorite.'
     : staffMode
-      ? 'Sign in with your staff account to manage menu stock.'
+      ? 'Sign in with your staff, admin, or rider account.'
       : 'Sign in to pick up where your appetite left off.';
   submit.textContent = state.registering ? 'Create account' : 'Sign in';
   switchCopy.textContent = state.registering ? 'Already have an account?' : 'New around here?';
@@ -173,9 +177,11 @@ function showApp() {
   document.querySelector('#app-view').classList.remove('hidden');
   const isAdmin = state.user.role === 'admin';
   const isStaff = state.user.role === 'staff';
-  document.querySelector('#customer-nav').classList.toggle('hidden', isAdmin || isStaff);
+  const isRider = state.user.role === 'rider';
+  document.querySelector('#customer-nav').classList.toggle('hidden', isAdmin || isStaff || isRider);
   document.querySelector('#staff-nav').classList.toggle('hidden', !isStaff);
   document.querySelector('#admin-nav').classList.toggle('hidden', !isAdmin);
+  document.querySelector('#rider-nav').classList.toggle('hidden', !isRider);
   document.querySelector('#user-name').textContent = state.user.name;
   document.querySelector('#user-role').textContent = state.user.role;
   document.querySelector('#user-avatar').textContent = (state.user.name || 'Y').trim().charAt(0).toUpperCase();
@@ -184,7 +190,7 @@ function showApp() {
     month: 'short',
     day: 'numeric',
   }).format(new Date());
-  state.page = isAdmin ? 'dashboard' : isStaff ? 'inventory' : 'menu';
+  state.page = isAdmin ? 'dashboard' : isStaff ? 'inventory' : isRider ? 'rider-dashboard' : 'menu';
   state.pageHistory = [];
   setActiveNav();
   renderPage();
@@ -227,6 +233,8 @@ async function renderPage() {
     'my-dishes': 'My food',
     'my-sales': 'My sales',
     'create-recipe': 'Create dish',
+    'admin-deliveries': 'Deliveries',
+    'rider-dashboard': 'My deliveries',
   };
   crumb.textContent = pages[state.page] || 'Discover';
   if (state.page === 'menu') {
@@ -293,6 +301,26 @@ async function renderPage() {
       renderStaffOrders();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-staff-orders">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'admin-deliveries') {
+    content.innerHTML = '<div class="empty-state">Loading deliveries and rider availability...</div>';
+    try {
+      [state.deliveryOrders, state.riders] = await Promise.all([api('/admin/deliveries'), api('/admin/riders')]);
+      renderAdminDeliveries();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-deliveries">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'rider-dashboard') {
+    content.innerHTML = '<div class="empty-state">Loading your assigned deliveries...</div>';
+    try {
+      state.riderDeliveries = await api('/rider/deliveries');
+      renderRiderDashboard();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-rider-deliveries">Try again</button></div>`;
     }
     return;
   }
@@ -385,10 +413,77 @@ function renderOrders() {
         ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(order.created_at))
         : 'Recently placed';
       const status = String(order.status || 'pending').toLowerCase();
-      return `<article class="order-row"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)}</div></div><div class="order-items">${items || 'Order details unavailable'}</div><div class="order-total">${money(order.total_amount)}</div><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span></article>`;
+      const delivery = order.delivery || {};
+      const history = (order.status_history || [])
+        .map((entry) => `<li><span>${escapeHtml(statusLabel(entry.status))}</span><time>${escapeHtml(formatDateTime(entry.changed_at))}</time></li>`)
+        .join('');
+      const detail = order.delivery_type === 'delivery'
+        ? `<p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || 'Being assigned')}</p>`
+        : '<p><strong>Pickup:</strong> Collect your order when it is marked ready.</p>';
+      return `<article class="tracked-order"><div class="tracked-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)} · ${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</div></div><div class="tracked-order-total"><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-items">${items || 'Order details unavailable'}</div><section class="delivery-progress" aria-label="Order progress">${renderOrderProgress(order)}</section><div class="order-delivery-details">${detail}<p><strong>Contact:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p></div>${history ? `<details class="order-history"><summary>Order and delivery history</summary><ol>${history}</ol></details>` : ''}</article>`;
     })
     .join('');
-  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">YOUR YUMMY MOMENTS</p><h1>My orders</h1><p>Everything you've ordered, all in one place.</p></div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="orders-list">${rows}</div>` : '<div class="empty-state">No orders just yet. Your first favorite is waiting in the menu.</div>'}`;
+  content.innerHTML = `<div class="page-heading"><div><p class="eyebrow">YOUR YUMMY MOMENTS</p><h1>My orders</h1><p>Track progress from approval through pickup or delivery.</p></div><button class="table-action" data-action="refresh-orders">↻ Refresh</button></div>${orders.length ? `<div class="tracked-order-list">${rows}</div>` : '<div class="empty-state">No orders just yet. Your first favorite is waiting in the menu.</div>'}`;
+}
+
+function statusLabel(status) {
+  const labels = {
+    ready_for_delivery: 'Ready For Delivery',
+    out_for_delivery: 'Out For Delivery',
+    picked_up: 'Picked Up',
+    assigned: 'Assigned',
+    pickup: 'Pickup',
+    delivery: 'Delivery',
+    partially_approved: 'Partially Approved',
+    partially_completed: 'Partially Completed',
+  };
+  return labels[status] || String(status || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatDateTime(value) {
+  return value
+    ? new Intl.DateTimeFormat('en-UG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    : 'Recently';
+}
+
+function renderOrderProgress(order) {
+  const pickupStages = ['pending', 'approved', 'preparing', 'ready_for_delivery', 'picked_up'];
+  const deliveryStages = ['pending', 'approved', 'preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered'];
+  const stages = order.delivery_type === 'delivery' ? deliveryStages : pickupStages;
+  const isPreDeliveryCompletion = order.status === 'completed' && order.delivery_type === 'delivery' && !order.delivery;
+  const currentStatus = ['partially_approved', 'partially_completed'].includes(order.status) || isPreDeliveryCompletion
+    ? 'approved'
+    : order.status;
+  const currentIndex = stages.indexOf(currentStatus);
+  if (currentStatus === 'cancelled' || currentIndex < 0) {
+    const message = {
+      cancelled: 'This order was cancelled.',
+      rejected: 'This order was not approved.',
+      completed: 'This order is complete.',
+    }[currentStatus] || 'The team is reviewing your order.';
+    return `<p class="progress-current"><span class="status-pill ${escapeHtml(currentStatus)}">${escapeHtml(statusLabel(currentStatus))}</span>${message}</p>`;
+  }
+  return `<ol class="progress-steps">${stages.map((stage, index) => `<li class="${index < currentIndex ? 'complete' : index === currentIndex ? 'current' : ''}"><span class="progress-dot">${index < currentIndex ? '✓' : index + 1}</span><span>${escapeHtml(statusLabel(stage))}</span></li>`).join('')}</ol>`;
+}
+
+function renderOrderStageActions(order) {
+  const actions = {
+    pending: [['approved', 'Approve order'], ['cancelled', 'Cancel']],
+    approved: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
+    partially_approved: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
+    partially_completed: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
+    preparing: [['ready_for_delivery', 'Mark ready'], ['cancelled', 'Cancel']],
+  };
+  let choices = actions[order.status] || [];
+  if (order.status === 'completed' && order.delivery_type === 'delivery') {
+    choices = [['preparing', 'Start preparing'], ['cancelled', 'Cancel']];
+  }
+  if (order.status === 'ready_for_delivery' && order.delivery_type === 'pickup') {
+    choices = [['picked_up', 'Mark picked up']];
+  }
+  return choices.map(([status, title]) =>
+    `<button class="table-action ${status === 'cancelled' ? 'reject-button' : 'approve-button'}" data-action="update-order-status" data-status="${status}" data-id="${escapeHtml(order.id)}">${title}</button>`,
+  ).join('');
 }
 
 function renderStaffOrders() {
@@ -419,11 +514,56 @@ function renderStaffOrders() {
           )
         : 'Recently placed';
       const status = String(order.status || 'pending').toLowerCase();
-      return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(date)}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status.replaceAll('_', ' '))}</span></div></div><div class="admin-order-lines">${items || '<div class="empty-state">No order lines</div>'}</div></article>`;
+      return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(date)}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-delivery-details"><p><strong>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</strong>${order.delivery_type === 'delivery' ? ` · ${escapeHtml(order.delivery_address || 'Address missing')} · ${escapeHtml(order.contact_phone || 'Phone missing')}` : ''}</p><p><strong>Rider:</strong> ${escapeHtml(order.delivery?.rider_name || 'Not assigned')}</p></div><div class="admin-order-lines">${items || '<div class="empty-state">No order lines</div>'}</div><div class="order-management-actions">${renderOrderStageActions(order)}</div></article>`;
     })
     .join('');
   document.querySelector('#page-content').innerHTML =
     `<div class="page-heading"><div><p class="eyebrow">ORDER MANAGEMENT</p><h1>All orders</h1><p>${pendingCount} dish ${pendingCount === 1 ? 'request' : 'requests'} awaiting approval.</p></div><button class="table-action" data-action="refresh-staff-orders">↻ Refresh</button></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed yet.</div>'}`;
+}
+
+function renderAdminDeliveries() {
+  const availableRiders = state.riders.filter((rider) => rider.login_enabled);
+  const riderCards = state.riders.map((rider) =>
+    `<article class="rider-card"><strong>${escapeHtml(rider.rider_name)}</strong><span>${escapeHtml(rider.rider_phone || 'No phone')}</span><span class="status-pill ${rider.status === 'available' ? 'approved' : 'preparing'}">${escapeHtml(statusLabel(rider.status))}</span>${rider.login_enabled ? '' : '<small>Link a rider login to assign orders</small>'}</article>`,
+  ).join('');
+  const rows = state.deliveryOrders.map((order) => {
+    const delivery = order.delivery || {};
+    const items = (order.items || []).map((item) => `${item.quantity} × ${escapeHtml(item.title)}`).join(', ');
+    const canAssign = ['ready_for_delivery', 'assigned'].includes(order.status) &&
+      (!delivery.delivery_status || delivery.delivery_status === 'assigned');
+    const assignment = canAssign
+      ? `<div class="rider-assignment"><label for="assign-rider-${escapeHtml(order.id)}">Assign rider</label><select id="assign-rider-${escapeHtml(order.id)}" data-rider-select="${escapeHtml(order.id)}"><option value="">Choose available rider</option>${availableRiders.filter((rider) => rider.status === 'available' || String(rider.id) === String(delivery.rider_id)).map((rider) => `<option value="${escapeHtml(rider.id)}" ${String(rider.id) === String(delivery.rider_id) ? 'selected' : ''}>${escapeHtml(rider.rider_name)} · ${escapeHtml(rider.status)}</option>`).join('')}</select><button class="table-action" data-action="assign-rider" data-id="${escapeHtml(order.id)}">Assign</button></div>`
+      : '';
+    const nextDeliveryStatus = {
+      assigned: 'picked_up',
+      picked_up: 'out_for_delivery',
+      out_for_delivery: 'delivered',
+    }[delivery.delivery_status];
+    const stageLabel = {
+      picked_up: 'Mark picked up',
+      out_for_delivery: 'Mark out for delivery',
+      delivered: 'Mark delivered',
+    }[nextDeliveryStatus];
+    const stageAction = nextDeliveryStatus
+      ? `<button class="table-action approve-button" data-action="update-admin-delivery" data-status="${nextDeliveryStatus}" data-id="${escapeHtml(delivery.id)}">${stageLabel}</button>`
+      : '';
+    const timeline = (order.status_history || []).map((entry) => `<li><span>${escapeHtml(statusLabel(entry.status))}</span><time>${escapeHtml(formatDateTime(entry.changed_at))}</time></li>`).join('');
+    return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(formatDateTime(order.created_at))}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></div></div><div class="order-delivery-details"><p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')} · <strong>Phone:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || 'Unassigned')} ${delivery.rider_phone ? `· ${escapeHtml(delivery.rider_phone)}` : ''} ${delivery.rider_availability ? `· ${escapeHtml(statusLabel(delivery.rider_availability))}` : ''}</p><p><strong>ETA:</strong> ${escapeHtml(delivery.estimated_arrival ? formatDateTime(delivery.estimated_arrival) : 'Not set')}</p><p><strong>Items:</strong> ${items || 'Order details unavailable'}</p></div><div class="order-management-actions">${assignment}${stageAction}<button class="table-action" data-action="view-delivery-history" data-id="${escapeHtml(order.id)}">View history</button></div>${timeline ? `<details class="order-history"><summary>Status timeline</summary><ol>${timeline}</ol></details>` : ''}</article>`;
+  }).join('');
+  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">DELIVERY OPERATIONS</p><h1>Deliveries</h1><p>Assign riders, monitor every delivery, and review status history.</p></div><button class="table-action" data-action="refresh-deliveries">↻ Refresh</button></div><section class="rider-roster"><div class="section-title"><h2>Rider availability</h2><span>${availableRiders.filter((rider) => rider.status === 'available').length} available · ${availableRiders.filter((rider) => rider.status === 'busy').length} busy</span></div>${riderCards ? `<div class="rider-grid">${riderCards}</div>` : '<div class="empty-state">No rider profiles are configured.</div>'}</section><div class="section-title delivery-orders-title"><h2>Home delivery orders</h2><span>${state.deliveryOrders.length} total</span></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No delivery orders yet.</div>'}`;
+}
+
+function renderRiderDashboard() {
+  const active = state.riderDeliveries.filter((order) => order.status !== 'delivered');
+  const rows = state.riderDeliveries.map((order) => {
+    const delivery = order.delivery || {};
+    const next = { assigned: 'picked_up', picked_up: 'out_for_delivery', out_for_delivery: 'delivered' }[delivery.delivery_status];
+    const label = { picked_up: 'Mark picked up', out_for_delivery: 'Start delivery', delivered: 'Mark delivered' }[next];
+    const items = (order.items || []).map((item) => `${item.quantity} × ${escapeHtml(item.title)}`).join(', ');
+    const action = next ? `<button class="table-action approve-button" data-action="update-rider-status" data-status="${next}" data-id="${escapeHtml(delivery.id)}">${label}</button>` : '';
+    return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.contact_phone || '')}</div></div><span class="status-pill ${escapeHtml(delivery.delivery_status || order.status)}">${escapeHtml(statusLabel(delivery.delivery_status || order.status))}</span></div><div class="order-delivery-details"><p><strong>Deliver to:</strong> ${escapeHtml(order.delivery_address || 'Address missing')}</p><p><strong>Items:</strong> ${items}</p><p><strong>Assigned:</strong> ${escapeHtml(formatDateTime(delivery.assigned_at))}</p></div><div class="order-management-actions">${action}</div></article>`;
+  }).join('');
+  document.querySelector('#page-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">RIDER DASHBOARD</p><h1>My deliveries</h1><p>${active.length} active delivery${active.length === 1 ? '' : 'ies'} assigned to you.</p></div><button class="table-action" data-action="refresh-rider-deliveries">↻ Refresh</button></div>${rows ? `<div class="admin-order-list">${rows}</div>` : '<div class="empty-state">No deliveries are assigned to your rider account.</div>'}`;
 }
 
 function renderInventory() {
@@ -449,6 +589,9 @@ function renderAdminDashboard() {
   const stats = [
     ['Orders placed', Number(summary.total_orders)],
     ['Awaiting review', Number(summary.pending_orders)],
+    ['Home deliveries', Number(summary.delivery_orders)],
+    ['Active deliveries', Number(summary.active_deliveries)],
+    ['Unassigned', Number(summary.unassigned_deliveries)],
     ['Approved sales', money(summary.total_sales)],
     ['Commission earned', money(summary.total_commission)],
     ['Available dishes', `${Number(summary.available_dishes)} / ${Number(summary.total_dishes)}`],
@@ -464,11 +607,11 @@ function renderAdminDashboard() {
           return `${item.quantity} × ${escapeHtml(item.title)} (${escapeHtml(source)} · ${escapeHtml(item.item_status)})`;
         })
         .join(', ');
-      return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}</div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(order.status)}</span></article>`;
+      return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}<small>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</small></div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></article>`;
     })
     .join('');
   document.querySelector('#page-content').innerHTML =
-    `<div class="page-heading"><div><p class="eyebrow">BUSINESS OVERVIEW</p><h1>Dashboard</h1><p>Orders, sales, and food availability at a glance.</p></div><div class="dashboard-actions"><button class="table-action" data-action="open-order-queue">View all orders</button><button class="table-action" data-action="refresh-dashboard">↻ Refresh</button></div></div>
+    `<div class="page-heading"><div><p class="eyebrow">BUSINESS OVERVIEW</p><h1>Dashboard</h1><p>Orders, sales, rider availability, and delivery activity at a glance.</p></div><div class="dashboard-actions"><button class="table-action" data-action="open-deliveries">Manage deliveries</button><button class="table-action" data-action="open-order-queue">View all orders</button><button class="table-action" data-action="refresh-dashboard">↻ Refresh</button></div></div>
   <div class="dashboard-stats">${stats.map(([label, value]) => `<article class="dashboard-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('')}</div>
   <div class="section-title dashboard-section-title"><h2>Recent orders</h2><span>Newest first</span></div>
   ${rows ? `<div class="dashboard-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed yet.</div>'}`;
@@ -562,7 +705,8 @@ function renderCart() {
         `<div class="cart-line"><div><h3>${escapeHtml(line.item.title)}</h3><p>${money(line.item.price)} each · ${money(Number(line.item.price) * line.quantity)}</p></div><div class="quantity-control"><button data-action="quantity" data-index="${index}" data-change="-1" aria-label="Remove one">−</button><span>${line.quantity}</span><button data-action="quantity" data-index="${index}" data-change="1" aria-label="Add one">+</button></div></div>`,
     )
     .join('');
-  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">THE GOOD STUFF</p><h2 id="cart-title">Your bag <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close bag">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">Available orders are approved automatically. Unavailable requests go to admin review.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place order</button></div>` : '<div class="cart-empty">Your bag is taking a little breather.<br>Add something lovely from the menu.</div>'}</section></div>`;
+  const checkout = state.checkout;
+  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">THE GOOD STUFF</p><h2 id="cart-title">Your bag <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close bag">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="checkout-details"><fieldset><legend>Pickup or delivery?</legend><label><input type="radio" name="delivery_type" value="pickup" ${checkout.deliveryType === 'pickup' ? 'checked' : ''}> Pickup</label><label><input type="radio" name="delivery_type" value="delivery" ${checkout.deliveryType === 'delivery' ? 'checked' : ''}> Delivery</label></fieldset>${checkout.deliveryType === 'delivery' ? `<label class="checkout-field">Delivery address<textarea name="delivery_address" maxlength="255" rows="2" placeholder="Street, area, and directions" required>${escapeHtml(checkout.address)}</textarea></label><label class="checkout-field">Contact phone<input name="contact_phone" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" value="${escapeHtml(checkout.phone)}" required></label>` : ''}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">Available items are approved automatically. Items needing review remain pending.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place order</button></div>` : '<div class="cart-empty">Your bag is taking a little breather.<br>Add something lovely from the menu.</div>'}</section></div>`;
 }
 
 function closeCart() {
@@ -574,15 +718,26 @@ async function placeOrder(button) {
   button.innerHTML = 'Placing order…';
   const error = document.querySelector('#cart-error');
   error.textContent = '';
+  if (state.checkout.deliveryType === 'delivery' &&
+      (!state.checkout.address.trim() || !state.checkout.phone.trim())) {
+    error.textContent = 'Enter a delivery address and contact phone number.';
+    button.disabled = false;
+    button.textContent = 'Place order';
+    return;
+  }
   try {
     // The API rechecks authoritative prices and stock inside its transaction.
     const result = await api('/order', {
       method: 'POST',
       body: JSON.stringify({
         items: state.cart.map((line) => ({ itemId: line.item.id, quantity: line.quantity })),
+        delivery_type: state.checkout.deliveryType,
+        delivery_address: state.checkout.address,
+        contact_phone: state.checkout.phone,
       }),
     });
     state.cart = [];
+    state.checkout = { deliveryType: 'pickup', address: '', phone: '' };
     syncCart();
     closeCart();
     showToast(
@@ -596,6 +751,83 @@ async function placeOrder(button) {
     error.textContent = requestError.message;
     button.disabled = false;
     button.textContent = 'Place order';
+  }
+}
+
+async function updateOrderStage(orderId, status, button) {
+  button.disabled = true;
+  try {
+    await api(`/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    showToast(`Order updated: ${statusLabel(status)}`);
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function assignRider(orderId, button) {
+  const select = document.getElementById(`assign-rider-${orderId}`);
+  if (!select || !select.value) {
+    showToast('Choose an available rider');
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api(`/admin/orders/${encodeURIComponent(orderId)}/assign-rider`, {
+      method: 'PUT',
+      body: JSON.stringify({ rider_id: select.value }),
+    });
+    showToast('Rider assigned');
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function updateRiderDelivery(deliveryId, status, button) {
+  button.disabled = true;
+  try {
+    await api(`/rider/deliveries/${encodeURIComponent(deliveryId)}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    showToast(`Delivery updated: ${statusLabel(status)}`);
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function updateAdminDelivery(deliveryId, status, button) {
+  button.disabled = true;
+  try {
+    await api(`/admin/deliveries/${encodeURIComponent(deliveryId)}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    showToast(`Delivery updated: ${statusLabel(status)}`);
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function viewDeliveryHistory(orderId) {
+  try {
+    const history = await api(`/orders/${encodeURIComponent(orderId)}/delivery-history`);
+    const entries = history.map((entry) =>
+      `<li><span><strong>${escapeHtml(statusLabel(entry.status))}</strong><small>${escapeHtml(entry.changed_by || 'System')}</small></span><time>${escapeHtml(formatDateTime(entry.changed_at))}</time></li>`,
+    ).join('');
+    document.querySelector('#modal-root').innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer history-drawer" role="dialog" aria-modal="true" aria-labelledby="history-title"><div class="drawer-head"><div><p class="eyebrow">DELIVERY HISTORY</p><h2 id="history-title">Order #${escapeHtml(orderId)}</h2></div><button class="close-button" data-action="close-cart" aria-label="Close history">×</button></div><ol class="history-list">${entries || '<li>No status history available.</li>'}</ol></section></div>`;
+  } catch (error) {
+    showToast(error.message);
   }
 }
 
@@ -740,8 +972,8 @@ async function submitAuth(event) {
         method: 'POST',
         body: JSON.stringify({ email: payload.email, password: payload.password }),
       });
-      if (state.authMode === 'staff' && !['admin', 'staff'].includes(user.role)) {
-        throw new Error('This account does not have staff or admin access. Choose Customer sign-in.');
+      if (state.authMode === 'staff' && !['admin', 'staff', 'rider'].includes(user.role)) {
+        throw new Error('This account does not have staff, admin, or rider access. Choose Customer sign-in.');
       }
       state.user = user;
       writeStorage('yummy-token', token);
@@ -814,15 +1046,35 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   }
   if (action === 'edit-stock') changeStock(id);
   if (action === 'update-order-item') updateOrderItemStatus(id, target.dataset.status, target);
+  if (action === 'update-order-status') updateOrderStage(id, target.dataset.status, target);
+  if (action === 'assign-rider') assignRider(id, target);
+  if (action === 'update-rider-status') updateRiderDelivery(id, target.dataset.status, target);
+  if (action === 'update-admin-delivery') updateAdminDelivery(id, target.dataset.status, target);
+  if (action === 'view-delivery-history') viewDeliveryHistory(id);
   if (action === 'go-create-recipe') {
     state.recipeSource = 'community';
     setPage('create-recipe');
   }
   if (action === 'open-order-queue') setPage('staff-orders');
+  if (action === 'open-deliveries') setPage('admin-deliveries');
   if (action === 'refresh-inventory') renderPage();
   if (action === 'refresh-dashboard' || action === 'refresh-my-dishes' || action === 'refresh-my-sales') renderPage();
   if (action === 'refresh-orders' || action === 'refresh-staff-orders') renderPage();
+  if (action === 'refresh-deliveries' || action === 'refresh-rider-deliveries') renderPage();
   if (action === 'retry-menu' || action === 'retry-orders' || action === 'retry-inventory') renderPage();
+});
+document.querySelector('#modal-root').addEventListener('input', (event) => {
+  if (event.target.name === 'delivery_address') state.checkout.address = event.target.value;
+  if (event.target.name === 'contact_phone') state.checkout.phone = event.target.value;
+});
+document.querySelector('#modal-root').addEventListener('change', (event) => {
+  if (event.target.name === 'delivery_type') {
+    const drawer = event.target.closest('.cart-drawer');
+    state.checkout.address = drawer.querySelector('[name="delivery_address"]')?.value || state.checkout.address;
+    state.checkout.phone = drawer.querySelector('[name="contact_phone"]')?.value || state.checkout.phone;
+    state.checkout.deliveryType = event.target.value;
+    renderCart();
+  }
 });
 document.querySelector('#modal-root').addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');

@@ -1918,3 +1918,337 @@ input:focus-visible {
     gap: 8px;
   }
 }
+
+/* Delivery status, rider operations, and checkout details. */
+.status-pill.preparing,
+.status-pill.ready_for_delivery,
+.status-pill.assigned,
+.status-pill.picked_up {
+  background: #e9eff4;
+  color: #466477;
+}
+.status-pill.out_for_delivery {
+  background: #e7eef8;
+  color: #405f8b;
+}
+.status-pill.delivered,
+.status-pill.available {
+  background: #e5f1e8;
+  color: #3e704c;
+}
+.status-pill.busy {
+  background: #fcf0de;
+  color: #9f6930;
+}
+.status-pill.cancelled {
+  background: #fae9e5;
+  color: #a14835;
+}
+.tracked-order-list,
+.rider-roster,
+.admin-order-list {
+  display: grid;
+  gap: 14px;
+}
+.tracked-order,
+.rider-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 17px 19px;
+}
+.tracked-order-heading,
+.tracked-order-total {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.tracked-order-total {
+  justify-content: flex-end;
+}
+.tracked-order .order-items {
+  margin: 14px 0;
+}
+.delivery-progress {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 15px;
+}
+.progress-steps {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.progress-steps li {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  font-size: 9px;
+  gap: 7px;
+  position: relative;
+  text-align: center;
+}
+.progress-steps li:not(:last-child)::after {
+  background: #e4e5dc;
+  content: '';
+  height: 2px;
+  left: calc(50% + 13px);
+  position: absolute;
+  right: calc(-50% + 13px);
+  top: 11px;
+}
+.progress-steps li.complete::after {
+  background: #788765;
+}
+.progress-dot {
+  align-items: center;
+  background: #efefe9;
+  border: 1px solid #e1e2d9;
+  border-radius: 50%;
+  color: #777a70;
+  display: flex;
+  height: 24px;
+  justify-content: center;
+  position: relative;
+  width: 24px;
+  z-index: 1;
+}
+.progress-steps li.complete .progress-dot,
+.progress-steps li.current .progress-dot {
+  background: #63734a;
+  border-color: #63734a;
+  color: white;
+}
+.progress-steps li.current {
+  color: var(--ink);
+  font-weight: 700;
+}
+.progress-current {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin: 0;
+}
+.order-delivery-details {
+  background: #f8f8f3;
+  border-radius: 4px;
+  color: #61655b;
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 12px 15px;
+  padding: 10px 12px;
+}
+.tracked-order .order-delivery-details {
+  margin: 12px 0 0;
+}
+.order-delivery-details p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.order-history {
+  color: var(--muted);
+  font-size: 10px;
+  margin: 12px 15px;
+}
+.tracked-order .order-history {
+  margin: 12px 0 0;
+}
+.order-history summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.order-history ol,
+.history-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.order-history li,
+.history-list li {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.history-list li {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+.history-list small {
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+}
+.history-list time,
+.order-history time {
+  color: var(--muted);
+  font-size: 9px;
+}
+.order-management-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0 15px 13px;
+}
+.rider-roster {
+  margin-bottom: 25px;
+}
+.rider-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.rider-card {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+}
+.rider-card strong {
+  font-size: 11px;
+}
+.rider-card > span:not(.status-pill),
+.rider-card small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.rider-card .status-pill {
+  justify-self: start;
+}
+.rider-assignment {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.rider-assignment label,
+.checkout-field,
+.checkout-details legend {
+  color: #62665b;
+  font-size: 10px;
+  font-weight: 700;
+}
+.rider-assignment select,
+.checkout-field input,
+.checkout-field textarea {
+  background: white;
+  border: 1px solid #e2e3d8;
+  border-radius: 4px;
+  color: var(--ink);
+  font: inherit;
+  padding: 8px;
+}
+.rider-assignment select {
+  font-size: 10px;
+  max-width: 210px;
+}
+.checkout-details {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0 14px;
+}
+.checkout-details fieldset {
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.checkout-details legend {
+  margin-bottom: 9px;
+}
+.checkout-details fieldset label {
+  align-items: center;
+  color: #62665b;
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+}
+.checkout-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.checkout-field input,
+.checkout-field textarea {
+  font-size: 11px;
+  width: 100%;
+}
+.checkout-field textarea {
+  resize: vertical;
+}
+.checkout-field input:focus,
+.checkout-field textarea:focus,
+.rider-assignment select:focus {
+  border-color: #a7b193;
+  outline: 0;
+}
+.dashboard-order-row small {
+  color: var(--muted);
+  display: block;
+  font-size: 9px;
+  margin-top: 4px;
+}
+.dashboard-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-stat:nth-child(2n) {
+    border-right: 0;
+  }
+  .dashboard-stat:nth-child(2n + 1) {
+    border-right: 1px solid var(--line);
+  }
+  .tracked-order {
+    padding: 14px;
+  }
+  .tracked-order-heading {
+    align-items: flex-start;
+  }
+  .tracked-order-total {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .progress-steps {
+    gap: 3px;
+  }
+  .progress-steps li {
+    font-size: 8px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .progress-steps li:not(:last-child)::after {
+    left: calc(50% + 10px);
+    right: calc(-50% + 10px);
+    top: 10px;
+  }
+  .progress-dot {
+    font-size: 8px;
+    height: 21px;
+    width: 21px;
+  }
+  .order-management-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .rider-assignment {
+    align-items: stretch;
+  }
+  .rider-assignment select {
+    flex: 1;
+    max-width: none;
+  }
+}

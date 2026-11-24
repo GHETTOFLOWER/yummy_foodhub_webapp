@@ -40,7 +40,7 @@
         <div class="auth-card">
           <div class="auth-mode-toggle" role="group" aria-label="Choose sign-in type">
             <button class="active" type="button" data-auth-mode="customer" aria-pressed="true">Customer</button>
-            <button type="button" data-auth-mode="staff" aria-pressed="false">Staff / Admin</button>
+            <button type="button" data-auth-mode="staff" aria-pressed="false">Staff / Admin / Rider</button>
           </div>
           <p class="eyebrow" id="auth-eyebrow">WELCOME BACK</p>
           <h2 id="auth-title">Come on in.</h2>
@@ -101,11 +101,15 @@
         </nav>
         <nav id="admin-nav" class="nav-list hidden" aria-label="Admin navigation">
           <button class="nav-link active" data-page="dashboard"><span class="nav-icon"></span>Dashboard</button>
+          <button class="nav-link" data-page="admin-deliveries"><span class="nav-icon"></span>Deliveries</button>
           <button class="nav-link" data-page="staff-orders"><span class="nav-icon"></span>All orders</button>
           <button class="nav-link" data-page="inventory"><span class="nav-icon"></span>Inventory</button>
           <button class="nav-link" data-page="create-recipe" data-source="business">
             <span class="nav-icon"></span>Add house dish
           </button>
+        </nav>
+        <nav id="rider-nav" class="nav-list hidden" aria-label="Rider navigation">
+          <button class="nav-link active" data-page="rider-dashboard"><span class="nav-icon"></span>My deliveries</button>
         </nav>
         <div class="sidebar-bottom">
           <div class="sidebar-promo">

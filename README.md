@@ -63,6 +63,7 @@ Staff and admins can update stock and review customer orders. Admins can also vi
 | `customer` | browse, order, and view personal order history |
 | `staff` | manage inventory and approve/reject orders |
 | `admin` | full oversight of orders, sales, and platform dashboards |
+| `rider` | view and update deliveries assigned to the linked rider profile |
 
 New accounts are customers. To make an account staff or admin, change its role in MySQL.
 
@@ -89,8 +90,23 @@ The database must have these tables:
 - `recipe_ingredients`
 - `orders`
 - `order_items`
+- `delivery_riders`
+- `deliveries`
 
 The server uses them for accounts, dishes, orders, stock, and reports.
+
+### Enable delivery and rider accounts
+
+The existing database already stores `orders.delivery_type`, `delivery_address`, and `contact_phone`, along with rider and delivery records. Run [`yummy-backend/delivery-migration.sql`](./yummy-backend/delivery-migration.sql) once before deploying the updated server. It widens role/order status values, links rider profiles to login accounts, adds delivery-stage timestamps, and creates order status history without dropping existing records.
+
+Create a rider's login through the normal registration flow, then grant the rider role and link it to a rider profile in MySQL:
+
+```sql
+UPDATE users SET role = 'rider' WHERE email = 'rider@example.com';
+UPDATE delivery_riders SET user_id = 123 WHERE id = 1;
+```
+
+Replace the example IDs with the matching account and rider profile IDs. Riders sign in using Staff / Admin / Rider and see only their assigned deliveries. Admins assign riders from Deliveries; rider availability changes to busy while active assignments remain and returns to available after delivery. Staff/admin manage order stages; riders update assigned delivery stages.
 
 ---
 
@@ -127,10 +143,11 @@ The server also serves the website, so open the app at `http://localhost:3107`.
 The `render.yaml` file sets up the app on Render.
 
 1. Create a MySQL database and load the core app tables.
-2. Push this project to GitHub.
-3. In Render, create a Blueprint from this project.
-4. Add `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in Render's environment settings.
-5. Deploy. Open `/api/health` to check the server, then open the service URL to use the app.
+2. Apply `yummy-backend/delivery-migration.sql` to that database once.
+3. Push this project to GitHub.
+4. In Render, create a Blueprint from this project.
+5. Add `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in Render's environment settings.
+6. Deploy. Open `/api/health` to check the server, then open the service URL to use the app.
 
 Login sessions are stored in server memory. Restarting the server signs users out. Multiple server copies are not supported.
 
@@ -153,6 +170,14 @@ Main routes:
 - `PUT /inventory/:id` — update a dish’s stock quantity
 - `GET /staff/orders` — review the full order queue
 - `GET /admin/dashboard` — view admin totals and recent orders
+- `GET /admin/deliveries` — view delivery orders, rider availability, and status history
+- `GET /admin/riders` — list rider profiles and linked login status
+- `GET /admin/riders/available` — list available riders with login accounts
+- `PUT /admin/orders/:id/assign-rider` — assign a rider to a ready delivery order
+- `PUT /admin/deliveries/:deliveryId/status` — administer a delivery stage
+- `GET /rider/deliveries` — view deliveries assigned to the signed-in rider
+- `PUT /rider/deliveries/:deliveryId/status` — update an assigned delivery status
+- `GET /orders/:orderId/delivery-history` — view authorized order and delivery status history
 - `GET /seller/orders` — view sales tied to a seller
 - `GET /seller/dashboard` — view seller earnings and stats
 

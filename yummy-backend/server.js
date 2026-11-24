@@ -504,6 +504,39 @@ async function attachOrderItems(orders) {
   return orders;
 }
 
+async function attachDeliveryProgress(orders) {
+  if (!orders.length) return orders;
+  // Delivery lifecycle stays on orders/deliveries; item-level approval and seller payout statuses remain separate.
+  const orderIds = orders.map((order) => order.id);
+  const placeholders = orderIds.map(() => '?').join(', ');
+  const [deliveries] = await pool.query(
+    `SELECT d.*, r.rider_name, r.rider_phone, r.status AS rider_availability
+     FROM deliveries d
+     LEFT JOIN delivery_riders r ON r.id = d.rider_id
+     WHERE d.order_id IN (${placeholders})
+     ORDER BY d.id DESC`,
+    orderIds,
+  );
+  const [history] = await pool.query(
+    `SELECT order_id, status, changed_at
+     FROM order_status_history
+     WHERE order_id IN (${placeholders})
+     ORDER BY changed_at, id`,
+    orderIds,
+  );
+  const deliveryByOrder = new Map();
+  for (const delivery of deliveries) {
+    if (!deliveryByOrder.has(delivery.order_id)) deliveryByOrder.set(delivery.order_id, delivery);
+  }
+  const historyByOrder = new Map(orderIds.map((id) => [id, []]));
+  for (const entry of history) historyByOrder.get(entry.order_id).push(entry);
+  return orders.map((order) => ({
+    ...order,
+    delivery: deliveryByOrder.get(order.id) || null,
+    status_history: historyByOrder.get(order.id) || [],
+  }));
+}
+
 function normalizeDish(body) {
   const ingredients = Array.isArray(body.ingredients)
     ? [...new Set(body.ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
@@ -563,7 +596,17 @@ async function insertDish(connection, dish, listingType, creatorId) {
   return result.insertId;
 }
 
-async function refreshOrderStatus(connection, orderId) {
+async function refreshOrderStatus(connection, orderId, changedBy = null) {
+  const [[order]] = await connection.query('SELECT status FROM orders WHERE id = ?', [orderId]);
+  if (!order) return null;
+  if (
+    ['preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered', 'cancelled'].includes(
+      order.status,
+    )
+  ) {
+    // Seller item decisions must not move an order backward after kitchen or delivery work has started.
+    return order.status;
+  }
   const [rows] = await connection.query('SELECT status FROM order_items WHERE order_id = ?', [orderId]);
   const statuses = rows.map((row) => row.status);
   const hasPending = statuses.includes('pending');
@@ -578,7 +621,13 @@ async function refreshOrderStatus(connection, orderId) {
   else if (hasCompleted && hasApproved) status = 'partially_completed';
   else if (hasCompleted) status = 'completed';
 
-  await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+  if (status !== order.status) {
+    await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+    await connection.query(
+      'INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)',
+      [orderId, status, changedBy],
+    );
+  }
   return status;
 }
 
@@ -634,8 +683,111 @@ async function setOrderLineStatus(connection, lineId, status, user) {
     throw error;
   }
 
-  const orderStatus = await refreshOrderStatus(connection, line.order_id);
+  const orderStatus = await refreshOrderStatus(connection, line.order_id, user.id);
   return { orderId: line.order_id, lineId: line.id, itemStatus: status, orderStatus };
+}
+
+async function writeOrderStatus(connection, orderId, status, userId) {
+  await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+  await connection.query(
+    'INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)',
+    [orderId, status, userId],
+  );
+}
+
+async function syncRiderAvailability(connection, riderId) {
+  if (!riderId) return;
+  // Availability reflects all live assignments, not just the delivery being updated.
+  const [[active]] = await connection.query(
+    `SELECT COUNT(*) AS active_count
+     FROM deliveries
+     WHERE rider_id = ? AND delivery_status IN ('assigned', 'picked_up', 'out_for_delivery')`,
+    [riderId],
+  );
+  await connection.query('UPDATE delivery_riders SET status = ? WHERE id = ?', [
+    Number(active.active_count) > 0 ? 'busy' : 'available',
+    riderId,
+  ]);
+}
+
+async function advanceDelivery(connection, delivery, nextStatus, userId) {
+  const transitions = {
+    assigned: 'picked_up',
+    picked_up: 'out_for_delivery',
+    out_for_delivery: 'delivered',
+  };
+  if (transitions[delivery.delivery_status] !== nextStatus) {
+    const error = new Error(`Cannot change delivery from ${delivery.delivery_status} to ${nextStatus}`);
+    error.statusCode = 409;
+    throw error;
+  }
+  const timestampColumn = {
+    picked_up: 'picked_up_at',
+    out_for_delivery: 'out_for_delivery_at',
+    delivered: 'delivered_at',
+  }[nextStatus];
+  await connection.query(
+    `UPDATE deliveries SET delivery_status = ?, ${timestampColumn} = CURRENT_TIMESTAMP WHERE id = ?`,
+    [nextStatus, delivery.id],
+  );
+  await writeOrderStatus(connection, delivery.order_id, nextStatus, userId);
+  if (nextStatus === 'delivered') await syncRiderAvailability(connection, delivery.rider_id);
+}
+
+async function updateOrderLifecycle(connection, order, nextStatus, user) {
+  if (nextStatus === 'approved' && order.status === 'pending') {
+    const [lines] = await connection.query(
+      'SELECT id, status FROM order_items WHERE order_id = ? ORDER BY id FOR UPDATE',
+      [order.id],
+    );
+    for (const line of lines.filter((item) => item.status === 'pending')) {
+      await setOrderLineStatus(connection, line.id, 'approved', user);
+    }
+    const [[updated]] = await connection.query('SELECT status FROM orders WHERE id = ?', [order.id]);
+    if (!['approved', 'partially_approved', 'partially_completed'].includes(updated.status)) {
+      const error = new Error('All available order items must be approved before preparing this order');
+      error.statusCode = 409;
+      throw error;
+    }
+    return updated.status;
+  }
+
+  const allowedTransitions = {
+    pending: ['cancelled'],
+    approved: ['preparing', 'cancelled'],
+    partially_approved: ['preparing', 'cancelled'],
+    partially_completed: ['preparing', 'cancelled'],
+    completed: order.delivery_type === 'delivery' ? ['preparing', 'cancelled'] : [],
+    preparing: ['ready_for_delivery', 'cancelled'],
+    ready_for_delivery: order.delivery_type === 'pickup' ? ['picked_up', 'cancelled'] : ['cancelled'],
+  };
+  if (!(allowedTransitions[order.status] || []).includes(nextStatus)) {
+    const error = new Error(`Cannot change order from ${order.status} to ${nextStatus}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (nextStatus === 'cancelled') {
+    const [lines] = await connection.query(
+      'SELECT id, item_id, quantity, status FROM order_items WHERE order_id = ? FOR UPDATE',
+      [order.id],
+    );
+    for (const line of lines) {
+      if (['approved', 'completed'].includes(line.status)) {
+        await connection.query('UPDATE menu_items SET stock_quantity = stock_quantity + ? WHERE id = ?', [
+          line.quantity,
+          line.item_id,
+        ]);
+      }
+    }
+    await connection.query(
+      `UPDATE order_items SET status = 'rejected', commission_amount = 0, seller_amount = 0
+       WHERE order_id = ? AND status != 'rejected'`,
+      [order.id],
+    );
+  }
+  await writeOrderStatus(connection, order.id, nextStatus, user.id);
+  return nextStatus;
 }
 
 app.get('/api/health', (req, res) => {
@@ -781,8 +933,21 @@ app.get('/recipes/user/:userId', requireAuth, async (req, res) => {
 app.post('/order', requireAuth, async (req, res) => {
   const userId = req.user.id;
   const { items } = req.body;
+  const deliveryType = String(req.body.delivery_type || 'pickup').trim();
+  const deliveryAddress = String(req.body.delivery_address || '').trim();
+  const contactPhone = String(req.body.contact_phone || '').trim();
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items are required' });
+  }
+  if (!['pickup', 'delivery'].includes(deliveryType)) {
+    return res.status(400).json({ error: 'Choose pickup or delivery' });
+  }
+  if (
+    deliveryType === 'delivery' &&
+    (!deliveryAddress || deliveryAddress.length > 255 || !/^[+0-9()\-\s]{7,20}$/.test(contactPhone) ||
+      contactPhone.replace(/\D/g, '').length < 7)
+  ) {
+    return res.status(400).json({ error: 'Delivery requires a valid address and contact phone number' });
   }
 
   const quantities = new Map();
@@ -824,10 +989,22 @@ app.post('/order', requireAuth, async (req, res) => {
 
     const status = orderLines.some((line) => line.status === 'pending') ? 'pending' : 'approved';
     const [orderResult] = await connection.query(
-      'INSERT INTO orders (user_id, status, total_amount) VALUES (?, ?, ?)',
-      [userId, status, total],
+      `INSERT INTO orders (user_id, status, total_amount, delivery_type, delivery_address, contact_phone)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        status,
+        total,
+        deliveryType,
+        deliveryType === 'delivery' ? deliveryAddress : null,
+        deliveryType === 'delivery' ? contactPhone : null,
+      ],
     );
     const orderId = orderResult.insertId;
+    await connection.query(
+      'INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)',
+      [orderId, status, userId],
+    );
 
     for (const line of orderLines) {
       await connection.query(
@@ -873,7 +1050,7 @@ app.get('/orders/:userId', requireAuth, async (req, res) => {
     const [orders] = await pool.query('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', [
       req.params.userId,
     ]);
-    res.json(await attachOrderItems(orders));
+    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
   } catch (err) {
     console.error('ORDERS ERROR:', err.message);
     res.status(500).json({ error: 'Could not load orders: ' + err.message });
@@ -933,7 +1110,7 @@ app.get('/staff/orders', requireAuth, requireRole('admin', 'staff'), async (req,
        FROM orders o JOIN users u ON u.id = o.user_id
        ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
     );
-    res.json(await attachOrderItems(orders));
+    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
   } catch (err) {
     console.error('STAFF ORDERS ERROR:', err.message);
     res.status(500).json({ error: 'Could not load staff orders: ' + err.message });
@@ -955,18 +1132,272 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) 
          COALESCE(SUM(stock_quantity > 0), 0) AS available_dishes
        FROM menu_items`,
     );
+    const [[deliveries]] = await pool.query(
+      `SELECT COUNT(*) AS delivery_orders,
+         COALESCE(SUM(status IN ('pending', 'approved', 'preparing', 'ready_for_delivery', 'assigned',
+           'picked_up', 'out_for_delivery')), 0) AS active_deliveries,
+         COALESCE(SUM(status = 'ready_for_delivery' AND id NOT IN
+           (SELECT order_id FROM deliveries WHERE rider_id IS NOT NULL)), 0) AS unassigned_deliveries
+       FROM orders WHERE delivery_type = 'delivery'`,
+    );
     const [recentOrders] = await pool.query(
       `SELECT o.*, u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
        ORDER BY o.created_at DESC LIMIT 8`,
     );
     res.json({
-      summary: { ...sales, ...listings },
-      recentOrders: await attachOrderItems(recentOrders),
+      summary: { ...sales, ...listings, ...deliveries },
+      recentOrders: await attachDeliveryProgress(await attachOrderItems(recentOrders)),
     });
   } catch (err) {
     console.error('ADMIN DASHBOARD ERROR:', err.message);
     res.status(500).json({ error: 'Could not load dashboard: ' + err.message });
+  }
+});
+
+app.get('/admin/deliveries', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const [orders] = await pool.query(
+      `SELECT o.*, customer.name AS customer_name, customer.email AS customer_email,
+         d.id AS delivery_id, d.delivery_status, d.rider_id, d.assigned_at, d.picked_up_at,
+         d.out_for_delivery_at, d.delivered_at, d.notes,
+         rider.rider_name, rider.rider_phone, rider.status AS rider_availability
+       FROM orders o
+       JOIN users customer ON customer.id = o.user_id
+       LEFT JOIN deliveries d ON d.id = (
+         SELECT MAX(latest.id) FROM deliveries latest WHERE latest.order_id = o.id
+       )
+       LEFT JOIN delivery_riders rider ON rider.id = d.rider_id
+       WHERE o.delivery_type = 'delivery'
+       ORDER BY o.created_at DESC`,
+    );
+    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
+  } catch (err) {
+    console.error('ADMIN DELIVERIES ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load deliveries: ' + err.message });
+  }
+});
+
+app.get('/admin/riders/available', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const [riders] = await pool.query(
+      `SELECT rider.id, rider.rider_name, rider.rider_phone, rider.status
+       FROM delivery_riders rider
+       JOIN users u ON u.id = rider.user_id
+       WHERE rider.status = 'available' AND u.role = 'rider'
+       ORDER BY rider.rider_name`,
+    );
+    res.json(riders);
+  } catch (err) {
+    console.error('AVAILABLE RIDERS ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load available riders: ' + err.message });
+  }
+});
+
+app.get('/admin/riders', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const [riders] = await pool.query(
+      `SELECT rider.id, rider.rider_name, rider.rider_phone, rider.status, rider.user_id,
+         (u.id IS NOT NULL AND u.role = 'rider') AS login_enabled
+       FROM delivery_riders rider
+       LEFT JOIN users u ON u.id = rider.user_id
+       ORDER BY rider.rider_name`,
+    );
+    res.json(riders);
+  } catch (err) {
+    console.error('ADMIN RIDERS ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load riders: ' + err.message });
+  }
+});
+
+app.put('/admin/orders/:id/assign-rider', requireAuth, requireRole('admin'), async (req, res) => {
+  const riderId = Number(req.body.rider_id);
+  if (!Number.isInteger(riderId) || riderId < 1) {
+    return res.status(400).json({ error: 'Select a valid rider' });
+  }
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [orders] = await connection.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (!orders.length) {
+      const error = new Error('Order not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    const order = orders[0];
+    if (order.delivery_type !== 'delivery' || !['ready_for_delivery', 'assigned'].includes(order.status)) {
+      const error = new Error('Riders can only be assigned to delivery orders that are ready');
+      error.statusCode = 409;
+      throw error;
+    }
+    const [riders] = await connection.query(
+      `SELECT rider.id, rider.status FROM delivery_riders rider
+       JOIN users u ON u.id = rider.user_id
+       WHERE rider.id = ? AND u.role = 'rider' FOR UPDATE`,
+      [riderId],
+    );
+    if (!riders.length) {
+      const error = new Error('The selected rider does not have a linked rider account');
+      error.statusCode = 400;
+      throw error;
+    }
+    const [existingDeliveries] = await connection.query(
+      'SELECT id, rider_id, delivery_status FROM deliveries WHERE order_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE',
+      [order.id],
+    );
+    const existing = existingDeliveries[0];
+    if (existing && existing.delivery_status !== 'assigned') {
+      const error = new Error('A rider cannot be changed after pickup');
+      error.statusCode = 409;
+      throw error;
+    }
+    const oldRiderId = existing && existing.rider_id;
+    if (riders[0].status !== 'available' && Number(oldRiderId) !== riderId) {
+      const error = new Error('The selected rider is currently busy');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (existing) {
+      await connection.query(
+        `UPDATE deliveries SET rider_id = ?, delivery_status = 'assigned',
+           assigned_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [riderId, existing.id],
+      );
+    } else {
+      await connection.query(
+        `INSERT INTO deliveries (order_id, rider_id, delivery_status, assigned_at)
+         VALUES (?, ?, 'assigned', CURRENT_TIMESTAMP)`,
+        [order.id, riderId],
+      );
+    }
+    await writeOrderStatus(connection, order.id, 'assigned', req.user.id);
+    await syncRiderAvailability(connection, oldRiderId);
+    await syncRiderAvailability(connection, riderId);
+    await connection.commit();
+    res.json({ order_id: order.id, rider_id: riderId, status: 'assigned' });
+  } catch (err) {
+    await connection.rollback();
+    console.error('ASSIGN RIDER ERROR:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.put('/admin/deliveries/:deliveryId/status', requireAuth, requireRole('admin'), async (req, res) => {
+  const { status } = req.body;
+  if (!['picked_up', 'out_for_delivery', 'delivered'].includes(status)) {
+    return res.status(400).json({ error: 'Choose picked_up, out_for_delivery, or delivered' });
+  }
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [deliveries] = await connection.query('SELECT * FROM deliveries WHERE id = ? FOR UPDATE', [
+      req.params.deliveryId,
+    ]);
+    if (!deliveries.length) {
+      const error = new Error('Delivery not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    await advanceDelivery(connection, deliveries[0], status, req.user.id);
+    await connection.commit();
+    res.json({ delivery_id: req.params.deliveryId, status });
+  } catch (err) {
+    await connection.rollback();
+    console.error('ADMIN DELIVERY UPDATE ERROR:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.get('/rider/deliveries', requireAuth, requireRole('rider'), async (req, res) => {
+  try {
+    const [orders] = await pool.query(
+      `SELECT o.*, customer.name AS customer_name, customer.email AS customer_email,
+         d.id AS delivery_id, d.delivery_status, d.rider_id, d.assigned_at,
+         d.picked_up_at, d.out_for_delivery_at, d.delivered_at, d.notes,
+         rider.rider_name, rider.rider_phone
+       FROM deliveries d
+       JOIN orders o ON o.id = d.order_id
+       JOIN delivery_riders rider ON rider.id = d.rider_id
+       JOIN users customer ON customer.id = o.user_id
+       WHERE rider.user_id = ?
+       ORDER BY (d.delivery_status = 'delivered') ASC, d.assigned_at DESC`,
+      [req.user.id],
+    );
+    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
+  } catch (err) {
+    console.error('RIDER DELIVERIES ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load your deliveries: ' + err.message });
+  }
+});
+
+app.put('/rider/deliveries/:deliveryId/status', requireAuth, requireRole('rider'), async (req, res) => {
+  const { status } = req.body;
+  if (!['picked_up', 'out_for_delivery', 'delivered'].includes(status)) {
+    return res.status(400).json({ error: 'Choose picked_up, out_for_delivery, or delivered' });
+  }
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [deliveries] = await connection.query(
+      `SELECT d.*, o.id AS order_id, o.status AS order_status, rider.id AS rider_profile_id
+       FROM deliveries d
+       JOIN orders o ON o.id = d.order_id
+       JOIN delivery_riders rider ON rider.id = d.rider_id
+       WHERE d.id = ? AND rider.user_id = ? FOR UPDATE`,
+      [req.params.deliveryId, req.user.id],
+    );
+    if (!deliveries.length) {
+      const error = new Error('Delivery not found or not assigned to you');
+      error.statusCode = 404;
+      throw error;
+    }
+    const delivery = deliveries[0];
+    await advanceDelivery(connection, delivery, status, req.user.id);
+    await connection.commit();
+    res.json({ delivery_id: delivery.id, order_id: delivery.order_id, status });
+  } catch (err) {
+    await connection.rollback();
+    console.error('RIDER UPDATE ERROR:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.get('/orders/:orderId/delivery-history', requireAuth, async (req, res) => {
+  try {
+    const [orders] = await pool.query('SELECT id, user_id FROM orders WHERE id = ?', [req.params.orderId]);
+    if (!orders.length) return res.status(404).json({ error: 'Order not found' });
+    const order = orders[0];
+    if (req.user.role === 'customer' && Number(order.user_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'You can only view your own delivery history' });
+    }
+    if (req.user.role === 'rider') {
+      const [assigned] = await pool.query(
+        `SELECT d.id FROM deliveries d
+         JOIN delivery_riders rider ON rider.id = d.rider_id
+         WHERE d.order_id = ? AND rider.user_id = ? LIMIT 1`,
+        [order.id, req.user.id],
+      );
+      if (!assigned.length) return res.status(403).json({ error: 'This delivery is not assigned to you' });
+    } else if (!['customer', 'admin', 'staff'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to view this delivery history' });
+    }
+    const [history] = await pool.query(
+      `SELECT history.status, history.changed_at, u.name AS changed_by
+       FROM order_status_history history
+       LEFT JOIN users u ON u.id = history.changed_by
+       WHERE history.order_id = ? ORDER BY history.changed_at, history.id`,
+      [order.id],
+    );
+    res.json(history);
+  } catch (err) {
+    console.error('DELIVERY HISTORY ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load delivery history: ' + err.message });
   }
 });
 
@@ -1033,17 +1464,22 @@ app.put('/seller/order-items/:lineId/status', requireAuth, async (req, res) => {
 
 app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const { status } = req.body;
-  if (!['approved', 'rejected', 'completed'].includes(status)) {
-    return res.status(400).json({ error: 'Status must be approved, rejected or completed' });
+  if (!['approved', 'rejected', 'completed', 'preparing', 'ready_for_delivery', 'picked_up', 'cancelled'].includes(status)) {
+    return res.status(400).json({ error: 'Choose a supported order stage' });
   }
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [orders] = await connection.query('SELECT id FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
+    const [orders] = await connection.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
     if (orders.length === 0) {
       await connection.rollback();
       return res.status(404).json({ error: 'Order not found' });
+    }
+    if (['approved', 'preparing', 'ready_for_delivery', 'picked_up', 'cancelled'].includes(status)) {
+      const orderStatus = await updateOrderLifecycle(connection, orders[0], status, req.user);
+      await connection.commit();
+      return res.json({ id: req.params.id, status: orderStatus });
     }
     const [lines] = await connection.query(
       'SELECT id, status FROM order_items WHERE order_id = ? ORDER BY id FOR UPDATE',
