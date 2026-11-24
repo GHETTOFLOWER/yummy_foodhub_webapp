@@ -21,7 +21,14 @@ const state = {
   liveRefreshInFlight: false,
   registering: false,
   authMode: 'customer',
-  checkout: { deliveryType: 'pickup', address: '', phone: '' },
+  checkout: {
+    deliveryType: 'pickup',
+    orderType: 'instant',
+    scheduledDate: '',
+    scheduledTime: '',
+    address: '',
+    phone: '',
+  },
 };
 
 const defaultMenuTitles = [
@@ -133,6 +140,45 @@ function money(value) {
 }
 
 const API_BASE = 'https://yummy-foodhub-webapp.onrender.com';
+const SCHEDULE_TIME_ZONE = document.querySelector('#modal-root')?.dataset.scheduleTimezone || 'Africa/Kampala';
+
+function scheduledDateTimeParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SCHEDULE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    time: `${values.hour}:${values.minute}`,
+  };
+}
+
+function scheduledDateTimeToIso(date, time) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const scheduledFor = new Date(`${date}T${time}:00+03:00`);
+  if (!Number.isFinite(scheduledFor.getTime())) return null;
+  const parts = scheduledDateTimeParts(scheduledFor);
+  if (parts.date !== date || parts.time !== time) return null;
+  return scheduledFor.toISOString();
+}
+
+function formatScheduledDateTime(value) {
+  if (!value) return 'Date unavailable';
+  const scheduledFor = new Date(value);
+  return Number.isFinite(scheduledFor.getTime())
+    ? new Intl.DateTimeFormat('en-UG', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: SCHEDULE_TIME_ZONE,
+      }).format(scheduledFor)
+    : 'Date unavailable';
+}
 
 async function api(path, options = {}) {
   const token = readStorage('yummy-token');
@@ -500,13 +546,17 @@ function renderOrders() {
         : 'Date unavailable';
       const status = String(order.status || 'pending').toLowerCase();
       const delivery = order.delivery || {};
+      const scheduledFor = order.scheduled_for_utc || order.scheduled_for;
       const history = (order.status_history || [])
         .map((entry) => `<li><span>${escapeHtml(statusLabel(entry.status))}</span><time>${escapeHtml(formatDateTime(entry.changed_at))}</time></li>`)
         .join('');
+      const timing = order.order_type === 'scheduled'
+        ? `<p><strong>Scheduled for:</strong> ${escapeHtml(formatScheduledDateTime(scheduledFor))}</p>`
+        : '';
       const detail = order.delivery_type === 'delivery'
         ? `<p><strong>Address:</strong> ${escapeHtml(order.delivery_address || 'Not provided')}</p><p><strong>Rider:</strong> ${escapeHtml(delivery.rider_name || 'Awaiting rider acceptance')}</p>`
         : '<p><strong>Takeaway Order:</strong> Collect your order when it is ready.</p>';
-      return `<article class="tracked-order"><div class="tracked-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)} · ${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</div></div><div class="tracked-order-total"><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-items">${items || 'Order details unavailable'}</div><section class="delivery-progress" aria-label="Order progress">${renderOrderProgress(order)}</section><div class="order-delivery-details">${detail}<p><strong>Contact:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p></div>${history ? `<details class="order-history"><summary>Order and delivery history</summary><ol>${history}</ol></details>` : ''}</article>`;
+      return `<article class="tracked-order"><div class="tracked-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)}</div><div class="order-date">${escapeHtml(date)} · ${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</div></div><div class="tracked-order-total"><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(orderStatusLabel(order))}</span></div></div>${timing}<div class="order-items">${items || 'Order details unavailable'}</div><section class="delivery-progress" aria-label="Order progress">${renderOrderProgress(order)}</section><div class="order-delivery-details">${detail}<p><strong>Contact:</strong> ${escapeHtml(order.contact_phone || 'Not provided')}</p></div>${history ? `<details class="order-history"><summary>Order and delivery history</summary><ol>${history}</ol></details>` : ''}</article>`;
     })
     .join('');
   const liveStatus = state.orderTrackingError
@@ -517,6 +567,7 @@ function renderOrders() {
 
 function statusLabel(status) {
   const labels = {
+    scheduled: 'Scheduled',
     ready_for_delivery: 'Ready For Delivery',
     out_for_delivery: 'Out For Delivery',
     picked_up: 'Picked Up',
@@ -529,6 +580,17 @@ function statusLabel(status) {
   return labels[status] || String(status || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function orderStatusLabel(order) {
+  if (
+    order.order_type === 'scheduled' &&
+    order.delivery_type === 'pickup' &&
+    order.status === 'ready_for_delivery'
+  ) {
+    return 'Ready';
+  }
+  return statusLabel(order.status);
+}
+
 function formatDateTime(value) {
   return value
     ? new Intl.DateTimeFormat('en-UG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -536,10 +598,15 @@ function formatDateTime(value) {
 }
 
 function renderOrderProgress(order) {
-  const pickupStages = ['pending', 'approved', 'preparing', 'ready_for_delivery', 'picked_up'];
-  const deliveryStages = ['pending', 'approved', 'preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered'];
+  const scheduled = order.order_type === 'scheduled';
+  const pickupStages = scheduled
+    ? ['scheduled', 'preparing', 'ready_for_delivery', 'picked_up', 'completed']
+    : ['pending', 'approved', 'preparing', 'ready_for_delivery', 'picked_up'];
+  const deliveryStages = scheduled
+    ? ['scheduled', 'preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered', 'completed']
+    : ['pending', 'approved', 'preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered'];
   const stages = order.delivery_type === 'delivery' ? deliveryStages : pickupStages;
-  const isPreDeliveryCompletion = order.status === 'completed' && order.delivery_type === 'delivery' && !order.delivery;
+  const isPreDeliveryCompletion = !scheduled && order.status === 'completed' && order.delivery_type === 'delivery' && !order.delivery;
   const currentStatus = ['partially_approved', 'partially_completed'].includes(order.status) || isPreDeliveryCompletion
     ? 'approved'
     : order.status;
@@ -552,7 +619,7 @@ function renderOrderProgress(order) {
     }[currentStatus] || 'Staff are reviewing your order.';
     return `<p class="progress-current"><span class="status-pill ${escapeHtml(currentStatus)}">${escapeHtml(statusLabel(currentStatus))}</span>${message}</p>`;
   }
-  return `<ol class="progress-steps">${stages.map((stage, index) => `<li class="${index < currentIndex ? 'complete' : index === currentIndex ? 'current' : ''}"><span class="progress-dot">${index < currentIndex ? '✓' : index + 1}</span><span>${escapeHtml(statusLabel(stage))}</span></li>`).join('')}</ol>`;
+  return `<ol class="progress-steps">${stages.map((stage, index) => `<li class="${index < currentIndex ? 'complete' : index === currentIndex ? 'current' : ''}"><span class="progress-dot">${index < currentIndex ? '✓' : index + 1}</span><span>${escapeHtml(scheduled && stage === 'ready_for_delivery' && order.delivery_type === 'pickup' ? 'Ready' : statusLabel(stage))}</span></li>`).join('')}</ol>`;
 }
 
 function renderOrderStageActions(order) {
@@ -561,6 +628,7 @@ function renderOrderStageActions(order) {
     approved: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
     partially_approved: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
     partially_completed: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
+    scheduled: [['preparing', 'Start preparing'], ['cancelled', 'Cancel']],
     preparing: [['ready_for_delivery', 'Mark ready'], ['cancelled', 'Cancel']],
   };
   let choices = actions[order.status] || [];
@@ -589,7 +657,7 @@ function renderStaffOrders() {
           const actions =
             status === 'pending'
               ? `<button class="table-action approve-button" data-action="update-order-item" data-status="approved" data-id="${escapeHtml(item.order_item_id)}">Approve</button><button class="table-action reject-button" data-action="update-order-item" data-status="rejected" data-id="${escapeHtml(item.order_item_id)}">Reject</button>`
-              : status === 'approved'
+              : status === 'approved' && order.order_type !== 'scheduled'
                 ? `<button class="table-action" data-action="update-order-item" data-status="completed" data-id="${escapeHtml(item.order_item_id)}">Mark complete</button>`
                 : '';
           return `<div class="admin-order-line"><div class="admin-order-line-title"><strong>${item.quantity} × ${escapeHtml(item.title)}</strong></div><div class="admin-order-line-money"><span>Line total ${money(lineTotal)}</span></div><div class="admin-order-line-actions"><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span>${actions}</div></div>`;
@@ -601,7 +669,11 @@ function renderStaffOrders() {
           )
         : 'Date unavailable';
       const status = String(order.status || 'pending').toLowerCase();
-      return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(date)}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-delivery-details"><p><strong>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</strong>${order.delivery_type === 'delivery' ? ` · ${escapeHtml(order.delivery_address || 'Address missing')} · ${escapeHtml(order.contact_phone || 'Phone missing')}` : ''}</p><p><strong>Rider:</strong> ${escapeHtml(order.delivery?.rider_name || 'Not assigned')}</p></div><div class="admin-order-lines">${items || '<div class="empty-state">No order lines</div>'}</div><div class="order-management-actions">${renderOrderStageActions(order)}</div></article>`;
+      const scheduledFor = order.scheduled_for_utc || order.scheduled_for;
+      const scheduledDetails = order.order_type === 'scheduled'
+        ? `<p><strong>Scheduled for:</strong> ${escapeHtml(formatScheduledDateTime(scheduledFor))}</p>`
+        : '';
+      return `<article class="admin-order-card"><div class="admin-order-heading"><div><div class="order-id">Order #${escapeHtml(order.id)} · ${escapeHtml(order.customer_name)}</div><div class="staff-customer">${escapeHtml(order.customer_email)} · ${escapeHtml(date)}</div></div><div><strong class="order-total">${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span></div></div><div class="order-delivery-details"><p><strong>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</strong>${order.delivery_type === 'delivery' ? ` · ${escapeHtml(order.delivery_address || 'Address missing')} · ${escapeHtml(order.contact_phone || 'Phone missing')}` : ''}</p>${scheduledDetails}<p><strong>Rider:</strong> ${escapeHtml(order.delivery?.rider_name || 'Not assigned')}</p></div><div class="admin-order-lines">${items || '<div class="empty-state">No order lines</div>'}</div><div class="order-management-actions">${renderOrderStageActions(order)}</div></article>`;
     })
     .join('');
   document.querySelector('#page-content').innerHTML =
@@ -676,6 +748,9 @@ function renderAdminDashboard() {
   const stats = [
     ['Orders placed', Number(summary.total_orders)],
     ['Pending staff review', Number(summary.pending_orders)],
+    ['Upcoming Scheduled Orders', Number(summary.upcoming_scheduled_orders) || 0],
+    ['Scheduled Orders Today', Number(summary.scheduled_orders_today) || 0],
+    ['Scheduled Orders This Week', Number(summary.scheduled_orders_this_week) || 0],
     ['Home deliveries', Number(summary.delivery_orders)],
     ['Active deliveries', Number(summary.active_deliveries)],
     ['Unassigned', Number(summary.unassigned_deliveries)],
@@ -687,7 +762,10 @@ function renderAdminDashboard() {
       const items = (order.items || [])
         .map((item) => `${item.quantity} × ${escapeHtml(item.title)} (${escapeHtml(item.item_status)})`)
         .join(', ');
-      return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}<small>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</small></div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></article>`;
+      const timing = order.order_type === 'scheduled'
+        ? `Scheduled · ${formatScheduledDateTime(order.scheduled_for_utc || order.scheduled_for)}`
+        : statusLabel(order.delivery_type || 'pickup');
+      return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}<small>${escapeHtml(timing)}</small></div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></article>`;
     })
     .join('');
   const cateringStats = [
@@ -762,7 +840,22 @@ function renderCart() {
     )
     .join('');
   const checkout = state.checkout;
-  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">CART</p><h2 id="cart-title">Cart <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close cart">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="checkout-details"><fieldset><legend>Order Type</legend><label><input type="radio" name="delivery_type" value="pickup" ${checkout.deliveryType === 'pickup' ? 'checked' : ''}> Takeaway</label><label><input type="radio" name="delivery_type" value="delivery" ${checkout.deliveryType === 'delivery' ? 'checked' : ''}> Delivery</label></fieldset>${checkout.deliveryType === 'delivery' ? `<label class="checkout-field">Delivery address<textarea name="delivery_address" maxlength="255" rows="2" placeholder="Street, area, and directions" required>${escapeHtml(checkout.address)}</textarea></label><label class="checkout-field">Contact phone<input name="contact_phone" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" value="${escapeHtml(checkout.phone)}" required></label>` : ''}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">In-stock items are confirmed automatically. Items requiring staff review remain pending.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place Order</button></div>` : '<div class="cart-empty">Your cart is empty. Add menu items to continue.</div>'}</section></div>`;
+  const now = scheduledDateTimeParts();
+  const selectedDate = checkout.scheduledDate || '';
+  const minimumTime = selectedDate === now.date ? now.time : '00:00';
+  const scheduledFields = checkout.orderType === 'scheduled'
+    ? `<div class="schedule-fields">
+        <label class="checkout-field">Schedule date<input name="scheduled_date" type="date" min="${now.date}" value="${escapeHtml(selectedDate)}" required></label>
+        <label class="checkout-field">Schedule time<input name="scheduled_time" type="time" min="${minimumTime}" value="${escapeHtml(checkout.scheduledTime)}" required></label>
+      </div>
+      <p class="schedule-timezone-note">Times are shown in East Africa Time.</p>`
+    : '';
+  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">CART</p><h2 id="cart-title">Cart <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close cart">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="checkout-details">
+    <label class="checkout-field">Order type<select name="order_type"><option value="instant" ${checkout.orderType === 'instant' ? 'selected' : ''}>Order Now</option><option value="scheduled" ${checkout.orderType === 'scheduled' ? 'selected' : ''}>Schedule Order</option></select></label>
+    ${scheduledFields}
+    <fieldset><legend>Order method</legend><label><input type="radio" name="delivery_type" value="pickup" ${checkout.deliveryType === 'pickup' ? 'checked' : ''}> Takeaway</label><label><input type="radio" name="delivery_type" value="delivery" ${checkout.deliveryType === 'delivery' ? 'checked' : ''}> Delivery</label></fieldset>
+    ${checkout.deliveryType === 'delivery' ? `<label class="checkout-field">Delivery address<textarea name="delivery_address" maxlength="255" rows="2" placeholder="Street, area, and directions" required>${escapeHtml(checkout.address)}</textarea></label><label class="checkout-field">Contact phone<input name="contact_phone" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" value="${escapeHtml(checkout.phone)}" required></label>` : ''}
+    </div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">In-stock items are confirmed automatically. Items requiring staff review remain pending.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place Order</button></div>` : '<div class="cart-empty">Your cart is empty. Add menu items to continue.</div>'}</section></div>`;
 }
 
 function closeCart() {
@@ -774,9 +867,25 @@ async function placeOrder(button) {
   button.innerHTML = 'Placing order…';
   const error = document.querySelector('#cart-error');
   error.textContent = '';
+  const drawer = button.closest('.cart-drawer');
+  state.checkout.orderType = drawer.querySelector('[name="order_type"]').value;
+  state.checkout.scheduledDate = drawer.querySelector('[name="scheduled_date"]')?.value || '';
+  state.checkout.scheduledTime = drawer.querySelector('[name="scheduled_time"]')?.value || '';
+  const scheduledFor = state.checkout.orderType === 'scheduled'
+    ? scheduledDateTimeToIso(state.checkout.scheduledDate, state.checkout.scheduledTime)
+    : null;
   if (state.checkout.deliveryType === 'delivery' &&
       (!state.checkout.address.trim() || !state.checkout.phone.trim())) {
     error.textContent = 'Enter a delivery address and contact phone number.';
+    button.disabled = false;
+    button.textContent = 'Place Order';
+    return;
+  }
+  if (
+    state.checkout.orderType === 'scheduled' &&
+    (!scheduledFor || new Date(scheduledFor).getTime() <= Date.now())
+  ) {
+    error.textContent = 'Choose a future date and time for your scheduled order.';
     button.disabled = false;
     button.textContent = 'Place Order';
     return;
@@ -790,17 +899,30 @@ async function placeOrder(button) {
         delivery_type: state.checkout.deliveryType,
         delivery_address: state.checkout.address,
         contact_phone: state.checkout.phone,
+        order_type: state.checkout.orderType,
+        scheduled_for: scheduledFor,
       }),
     });
     state.cart = [];
-    state.checkout = { deliveryType: 'pickup', address: '', phone: '' };
+    state.checkout = {
+      deliveryType: 'pickup',
+      orderType: 'instant',
+      scheduledDate: '',
+      scheduledTime: '',
+      address: '',
+      phone: '',
+    };
     syncCart();
     closeCart();
-    showToast(
-      result.status === 'approved'
-        ? `Order #${result.orderId} confirmed`
-        : `Order #${result.orderId} submitted for staff review`,
-    );
+    if (result.order_type === 'scheduled') {
+      showToast(`Order #${result.orderId} scheduled for ${formatScheduledDateTime(result.scheduled_for)}`);
+    } else {
+      showToast(
+        result.status === 'approved'
+          ? `Order #${result.orderId} confirmed`
+          : `Order #${result.orderId} submitted for staff review`,
+      );
+    }
     if (state.page === 'menu') renderPage();
     if (state.page === 'orders') renderPage();
   } catch (requestError) {
@@ -1089,13 +1211,29 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
 document.querySelector('#modal-root').addEventListener('input', (event) => {
   if (event.target.name === 'delivery_address') state.checkout.address = event.target.value;
   if (event.target.name === 'contact_phone') state.checkout.phone = event.target.value;
+  if (event.target.name === 'scheduled_date') state.checkout.scheduledDate = event.target.value;
+  if (event.target.name === 'scheduled_time') state.checkout.scheduledTime = event.target.value;
 });
 document.querySelector('#modal-root').addEventListener('change', (event) => {
-  if (event.target.name === 'delivery_type') {
+  if (event.target.name === 'scheduled_date') {
+    state.checkout.scheduledDate = event.target.value;
+    const now = scheduledDateTimeParts();
+    const timeInput = event.target.closest('.cart-drawer').querySelector('[name="scheduled_time"]');
+    timeInput.min = event.target.value === now.date ? now.time : '00:00';
+    if (timeInput.value && timeInput.value < timeInput.min) {
+      timeInput.value = '';
+      state.checkout.scheduledTime = '';
+    }
+  }
+  if (event.target.name === 'scheduled_time') state.checkout.scheduledTime = event.target.value;
+  if (event.target.name === 'delivery_type' || event.target.name === 'order_type') {
     const drawer = event.target.closest('.cart-drawer');
     state.checkout.address = drawer.querySelector('[name="delivery_address"]')?.value || state.checkout.address;
     state.checkout.phone = drawer.querySelector('[name="contact_phone"]')?.value || state.checkout.phone;
-    state.checkout.deliveryType = event.target.value;
+    state.checkout.scheduledDate = drawer.querySelector('[name="scheduled_date"]')?.value || state.checkout.scheduledDate;
+    state.checkout.scheduledTime = drawer.querySelector('[name="scheduled_time"]')?.value || state.checkout.scheduledTime;
+    if (event.target.name === 'delivery_type') state.checkout.deliveryType = event.target.value;
+    if (event.target.name === 'order_type') state.checkout.orderType = event.target.value;
     renderCart();
   }
 });

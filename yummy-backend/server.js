@@ -322,7 +322,7 @@ async function attachDeliveryProgress(orders) {
 }
 
 async function refreshOrderStatus(connection, orderId, changedBy = null) {
-  const [[order]] = await connection.query('SELECT status FROM orders WHERE id = ?', [orderId]);
+  const [[order]] = await connection.query('SELECT status, order_type FROM orders WHERE id = ?', [orderId]);
   if (!order) return null;
   if (
     ['preparing', 'ready_for_delivery', 'assigned', 'picked_up', 'out_for_delivery', 'delivered', 'cancelled'].includes(
@@ -333,6 +333,9 @@ async function refreshOrderStatus(connection, orderId, changedBy = null) {
   }
   const [rows] = await connection.query('SELECT status FROM order_items WHERE order_id = ?', [orderId]);
   const statuses = rows.map((row) => row.status);
+  if (order.status === 'scheduled' && !statuses.every((itemStatus) => itemStatus === 'rejected')) {
+    return order.status;
+  }
   const hasPending = statuses.includes('pending');
   const hasApproved = statuses.includes('approved');
   const hasCompleted = statuses.includes('completed');
@@ -393,6 +396,19 @@ async function setOrderLineStatus(connection, lineId, status, changedBy) {
 
   const orderStatus = await refreshOrderStatus(connection, line.order_id, changedBy);
   return { orderId: line.order_id, lineId: line.id, itemStatus: status, orderStatus };
+}
+
+function getScheduledOrderTimestamp(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    return null;
+  }
+  const scheduledFor = new Date(value);
+  if (!Number.isFinite(scheduledFor.getTime()) || scheduledFor.toISOString() !== value) return null;
+  if (scheduledFor.getTime() <= Date.now()) return null;
+  return {
+    date: scheduledFor,
+    sql: scheduledFor.toISOString().slice(0, 19).replace('T', ' '),
+  };
 }
 
 async function writeOrderStatus(connection, orderId, status, userId) {
@@ -486,6 +502,7 @@ async function updateOrderLifecycle(connection, order, nextStatus, user) {
     partially_approved: ['preparing', 'cancelled'],
     partially_completed: ['preparing', 'cancelled'],
     completed: order.delivery_type === 'delivery' ? ['preparing', 'cancelled'] : [],
+    scheduled: ['preparing', 'cancelled'],
     preparing: ['ready_for_delivery', 'cancelled'],
     ready_for_delivery: order.delivery_type === 'pickup' ? ['picked_up', 'cancelled'] : ['cancelled'],
   };
@@ -493,6 +510,20 @@ async function updateOrderLifecycle(connection, order, nextStatus, user) {
     const error = new Error(`Cannot change order from ${order.status} to ${nextStatus}`);
     error.statusCode = 409;
     throw error;
+  }
+
+  if (order.status === 'scheduled' && nextStatus === 'preparing') {
+    const [[items]] = await connection.query(
+      `SELECT COUNT(*) AS pending_count
+       FROM order_items
+       WHERE order_id = ? AND status = 'pending'`,
+      [order.id],
+    );
+    if (Number(items.pending_count) > 0) {
+      const error = new Error('Review all pending order items before preparing this scheduled order.');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 
   if (nextStatus === 'cancelled') {
@@ -513,6 +544,11 @@ async function updateOrderLifecycle(connection, order, nextStatus, user) {
        WHERE order_id = ? AND status != 'rejected'`,
       [order.id],
     );
+  }
+  if (order.order_type === 'scheduled' && order.delivery_type === 'pickup' && nextStatus === 'picked_up') {
+    await writeOrderStatus(connection, order.id, 'picked_up', user.id);
+    await writeOrderStatus(connection, order.id, 'completed', user.id);
+    return 'completed';
   }
   await writeOrderStatus(connection, order.id, nextStatus, user.id);
   return nextStatus;
@@ -589,8 +625,18 @@ app.post('/order', requireAuth, async (req, res) => {
   const userId = req.user.id;
   const { items } = req.body;
   const deliveryType = String(req.body.delivery_type || 'pickup').trim();
+  const orderType = String(req.body.order_type || 'instant').trim();
   const deliveryAddress = String(req.body.delivery_address || '').trim();
   const contactPhone = String(req.body.contact_phone || '').trim();
+  if (!['instant', 'scheduled'].includes(orderType)) {
+    return res.status(400).json({ error: 'Select Order Now or Schedule Order.' });
+  }
+  const scheduledFor = orderType === 'scheduled'
+    ? getScheduledOrderTimestamp(req.body.scheduled_for)
+    : null;
+  if (orderType === 'scheduled' && !scheduledFor) {
+    return res.status(400).json({ error: 'Select a valid future date and time for your scheduled order.' });
+  }
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'At least one order item is required.' });
   }
@@ -619,6 +665,17 @@ app.post('/order', requireAuth, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    if (scheduledFor) {
+      const [[scheduleCheck]] = await connection.query(
+        'SELECT CAST(? AS DATETIME) > UTC_TIMESTAMP() AS is_future',
+        [scheduledFor.sql],
+      );
+      if (!Number(scheduleCheck.is_future)) {
+        const error = new Error('Select a future date and time for your scheduled order.');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
     let total = 0;
 
@@ -639,10 +696,13 @@ app.post('/order', requireAuth, async (req, res) => {
       total += lineTotal;
     }
 
-    const status = orderLines.some((line) => line.status === 'pending') ? 'pending' : 'approved';
+    const status = orderType === 'scheduled'
+      ? 'scheduled'
+      : (orderLines.some((line) => line.status === 'pending') ? 'pending' : 'approved');
     const [orderResult] = await connection.query(
-      `INSERT INTO orders (user_id, status, total_amount, delivery_type, delivery_address, contact_phone)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orders
+       (user_id, status, total_amount, delivery_type, delivery_address, contact_phone, order_type, scheduled_for)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         status,
@@ -650,6 +710,8 @@ app.post('/order', requireAuth, async (req, res) => {
         deliveryType,
         deliveryType === 'delivery' ? deliveryAddress : null,
         deliveryType === 'delivery' ? contactPhone : null,
+        orderType,
+        scheduledFor ? scheduledFor.sql : null,
       ],
     );
     const orderId = orderResult.insertId;
@@ -681,7 +743,13 @@ app.post('/order', requireAuth, async (req, res) => {
 
     await refreshOrderStatus(connection, orderId);
     await connection.commit();
-    res.status(201).json({ orderId, total, status });
+    res.status(201).json({
+      orderId,
+      total,
+      status,
+      order_type: orderType,
+      scheduled_for: scheduledFor ? scheduledFor.date.toISOString() : null,
+    });
   } catch (err) {
     await connection.rollback();
     console.error('ORDER ERROR:', err.message);
@@ -696,9 +764,13 @@ app.get('/orders/:userId', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'You can only view your own orders' });
   }
   try {
-    const [orders] = await pool.query('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', [
-      req.params.userId,
-    ]);
+    const [orders] = await pool.query(
+      `SELECT o.*, DATE_FORMAT(o.scheduled_for, '%Y-%m-%dT%H:%i:%sZ') AS scheduled_for_utc
+       FROM orders o
+       WHERE o.user_id = ?
+       ORDER BY o.created_at DESC`,
+      [req.params.userId],
+    );
     res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
   } catch (err) {
     console.error('ORDERS ERROR:', err.message);
@@ -709,7 +781,8 @@ app.get('/orders/:userId', requireAuth, async (req, res) => {
 app.get('/staff/orders', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   try {
     const [orders] = await pool.query(
-      `SELECT o.*, u.name AS customer_name, u.email AS customer_email
+      `SELECT o.*, DATE_FORMAT(o.scheduled_for, '%Y-%m-%dT%H:%i:%sZ') AS scheduled_for_utc,
+         u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
        ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
     );
@@ -849,13 +922,34 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin', 'staff'), async (r
          COALESCE(SUM(status = 'completed'), 0) AS catering_completed_requests
        FROM catering_requests`,
     );
+    const [[scheduled]] = await pool.query(
+      `SELECT
+         COUNT(CASE
+           WHEN scheduled_for >= UTC_TIMESTAMP()
+             AND status NOT IN ('cancelled', 'rejected', 'delivered', 'completed')
+           THEN 1
+         END) AS upcoming_scheduled_orders,
+         COALESCE(SUM(
+           DATE(DATE_ADD(scheduled_for, INTERVAL 3 HOUR)) =
+           DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR))
+           AND status NOT IN ('cancelled', 'rejected')
+         ), 0) AS scheduled_orders_today,
+         COALESCE(SUM(
+           YEARWEEK(DATE_ADD(scheduled_for, INTERVAL 3 HOUR), 1) =
+           YEARWEEK(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR), 1)
+           AND status NOT IN ('cancelled', 'rejected')
+         ), 0) AS scheduled_orders_this_week
+       FROM orders
+       WHERE order_type = 'scheduled'`,
+    );
     const [recentOrders] = await pool.query(
-      `SELECT o.*, u.name AS customer_name, u.email AS customer_email
+      `SELECT o.*, DATE_FORMAT(o.scheduled_for, '%Y-%m-%dT%H:%i:%sZ') AS scheduled_for_utc,
+         u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
        ORDER BY o.created_at DESC LIMIT 8`,
     );
     res.json({
-      summary: { ...sales, ...listings, ...deliveries, ...catering },
+      summary: { ...sales, ...listings, ...deliveries, ...catering, ...scheduled },
       recentOrders: await attachDeliveryProgress(await attachOrderItems(recentOrders)),
     });
   } catch (err) {
