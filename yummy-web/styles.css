@@ -607,65 +607,6 @@ input:focus-visible {
   font-size: 12px;
   margin: 10px 0 0;
 }
-.menu-banner {
-  align-items: center;
-  background: #66724c;
-  border-radius: 5px;
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  margin: 0 0 29px;
-  min-height: 170px;
-  overflow: hidden;
-  padding: 25px clamp(24px, 4vw, 48px);
-  position: relative;
-}
-.menu-banner::after {
-  background: url('https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=900&q=85') center
-    52% / cover;
-  border-left: 10px solid rgba(255, 255, 255, 0.2);
-  border-radius: 55% 0 0 55%;
-  content: '';
-  height: 230%;
-  opacity: 0.92;
-  position: absolute;
-  right: 0;
-  top: -65%;
-  transform: rotate(-5deg);
-  width: 37%;
-}
-.menu-banner::before {
-  background: linear-gradient(90deg, #66724c 4%, rgba(102, 114, 76, 0) 100%);
-  content: '';
-  inset: 0 18% 0 48%;
-  position: absolute;
-  z-index: 1;
-}
-.banner-copy {
-  max-width: 390px;
-  position: relative;
-  z-index: 2;
-}
-.banner-kicker {
-  color: #eaddad;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  margin: 0 0 10px;
-}
-.banner-copy h2 {
-  font-family: 'Fraunces', serif;
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.07;
-  margin: 0 0 8px;
-}
-.banner-copy p:last-child {
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 11px;
-  margin: 0;
-}
 .menu-tools {
   align-items: center;
   display: flex;
@@ -1518,26 +1459,6 @@ input:focus-visible {
   }
   .app-footer {
     padding: 14px 17px 18px;
-  }
-  .menu-banner {
-    min-height: 148px;
-    padding: 20px;
-  }
-  .menu-banner::after {
-    opacity: 0.48;
-    width: 42%;
-  }
-  .menu-banner::before {
-    inset: 0 0 0 30%;
-  }
-  .banner-copy {
-    max-width: 270px;
-  }
-  .banner-copy h2 {
-    font-size: 27px;
-  }
-  .banner-copy p:last-child {
-    max-width: 220px;
   }
   .menu-tools {
     align-items: flex-start;

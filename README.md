@@ -1,6 +1,6 @@
-# Higher Level Restaurant & Takeaway Uganda
+# HIGHER LEVEL Restaurant & Takeaway Uganda
 
-Higher Level Restaurant & Takeaway Uganda is a food ordering and delivery platform built with HTML, CSS, vanilla JavaScript, Node.js, Express, and MySQL.
+HIGHER LEVEL Restaurant & Takeaway Uganda is a food ordering and delivery platform built with HTML, CSS, vanilla JavaScript, Node.js, Express, and MySQL.
 
 ## Features
 

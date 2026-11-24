@@ -21,22 +21,22 @@ app.use(express.json());
 const pool = mysql.createPool(DB_CONFIG);
 const sessions = new Map();
 const defaultMenuSeedName = 'ugandan-dishes';
-const defaultMenuSeedVersion = 4;
+const defaultMenuSeedVersion = 5;
 const defaultMenuDishes = [
-  { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Traditional', price: 13000, description: 'Boiled cassava served with beef and green pea stew, saut?ed greens, avocado, and tomatoes.', imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
-  { title: 'Flaky Ugandan Chapati', category: 'Street Food', price: 3000, description: 'Golden, multi-layered pan-fried Ugandan flatbread with crisp edges and a soft center.', imageUrl: './images/Chapati.jpeg' },
-  { title: 'Kalo, Cassava & Beef Stew', category: 'Traditional', price: 14000, description: 'Traditional millet bread with cassava, steamed greens, and beef stew.', imageUrl: './images/Kalo,Cassava&Beaf Stew.jpeg' },
-  { title: 'Chicken Luwombo with Matooke & Sweet Potato', category: 'Traditional', price: 22000, description: 'Smoky chicken luwombo served with matooke, sweet potatoes, greens, and peas.', imageUrl: './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg' },
-  { title: 'Beef Luwombo with Matooke, Lumonde & Pumpkin', category: 'Traditional', price: 20000, description: 'Beef luwombo served with matooke, sweet potatoes, pumpkin, rice, greens, peas, and avocado.', imageUrl: './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg' },
-  { title: 'Matooke Katogo with Beef & Butula', category: 'Breakfast', price: 10000, description: 'One-pot matooke simmered with beef and green pea gravy, served with greens.', imageUrl: './images/Matooke Katogo with Beef and Butula.jpeg' },
-  { title: 'Matooke Katogo with Tilapia Fish', category: 'Traditional', price: 17000, description: 'Matooke simmered with tilapia fish and peas, topped with greens and avocado.', imageUrl: './images/Matooke Katogo with Tilapia fish.jpeg' },
-  { title: 'Matooke, Mayuni & Byenda', category: 'Traditional', price: 13000, description: 'Beef tripe stew served with matooke, cocoyam, peas, and greens.', imageUrl: './images/Matooke,Mayuni & Byenda.jpeg' },
-  { title: 'Matooke, Rice & Byenda', category: 'Traditional', price: 12000, description: 'Steamed matooke and rice served with rich beef tripe stew.', imageUrl: './images/Matooke,Rice&Byenda.jpeg' },
-  { title: 'Matooke, Mayuni & Fish Stew', category: 'Traditional', price: 18000, description: 'Matooke and cocoyam paired with tilapia fish stew, peas, greens, and avocado.', imageUrl: './images/MatookeMayuuni and Fish Stew.jpeg' },
-  { title: 'Posho & Tilapia Fish Stew with Greens', category: 'Mains', price: 16000, description: 'Tilapia fish in vegetable gravy served with posho and saut?ed greens.', imageUrl: './images/Posho& Tilapia Fish Stew with Greens.jpeg' },
-  { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Lunch', price: 7000, description: 'Posho served with spiced beans, okra stew, and saut?ed doodo greens.', imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
-  { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Mains', price: 19000, description: 'Tilapia in vegetable gravy served with steamed rice, greens, and fresh fruit juice.', imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
-  { title: 'Whole Fried Tilapia and Chips', category: 'Mains', price: 25000, description: 'Crispy whole fried tilapia served with golden chips, vegetables, and lime.', imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
+  { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Traditional', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
+  { title: 'Flaky Ugandan Chapati', category: 'Street Food', price: 3000, description: 'Traditional Ugandan chapati, pan-fried until crisp outside and soft inside.', imageUrl: './images/Chapati.jpeg' },
+  { title: 'Kalo, Cassava & Beef Stew', category: 'Traditional', price: 14000, description: 'Millet bread and cassava served with beef stew and steamed greens.', imageUrl: './images/Kalo,Cassava&Beaf Stew.jpeg' },
+  { title: 'Chicken Luwombo with Matooke & Sweet Potato', category: 'Traditional', price: 22000, description: 'Chicken luwombo served with matooke, sweet potatoes, peas, and greens.', imageUrl: './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg' },
+  { title: 'Beef Luwombo with Matooke, Lumonde & Pumpkin', category: 'Traditional', price: 20000, description: 'Beef luwombo served with matooke, pumpkin, rice, greens, and avocado.', imageUrl: './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg' },
+  { title: 'Matooke Katogo with Beef & Butula', category: 'Breakfast', price: 10000, description: 'Matooke katogo simmered with beef and served alongside green pea gravy.', imageUrl: './images/Matooke Katogo with Beef and Butula.jpeg' },
+  { title: 'Matooke Katogo with Tilapia Fish', category: 'Traditional', price: 17000, description: 'Matooke katogo served with tilapia fish, green peas, and fresh avocado.', imageUrl: './images/Matooke Katogo with Tilapia fish.jpeg' },
+  { title: 'Matooke, Mayuni & Byenda', category: 'Traditional', price: 13000, description: 'Matooke and cocoyam served with Ugandan beef tripe stew and greens.', imageUrl: './images/Matooke,Mayuni & Byenda.jpeg' },
+  { title: 'Matooke, Rice & Byenda', category: 'Traditional', price: 12000, description: 'Steamed matooke and rice served with Ugandan beef tripe stew.', imageUrl: './images/Matooke,Rice&Byenda.jpeg' },
+  { title: 'Matooke, Mayuni & Fish Stew', category: 'Traditional', price: 18000, description: 'Matooke and cocoyam served with tilapia stew, green peas, and greens.', imageUrl: './images/MatookeMayuuni and Fish Stew.jpeg' },
+  { title: 'Posho & Tilapia Fish Stew with Greens', category: 'Main Courses', price: 16000, description: 'Ugandan tilapia fish stew served with posho and steamed seasonal greens.', imageUrl: './images/Posho& Tilapia Fish Stew with Greens.jpeg' },
+  { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Lunch', price: 7000, description: 'Posho served with seasoned beans, okra stew, and steamed doodo greens.', imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
+  { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Main Courses', price: 19000, description: 'Steamed rice served with tilapia stew, greens, and fresh fruit juice.', imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
+  { title: 'Whole Fried Tilapia and Chips', category: 'Main Courses', price: 25000, description: 'Whole fried tilapia served with golden chips, fresh vegetables, and lime.', imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
 ];
 
 function getDefaultMenuRows(rows) {
@@ -102,9 +102,9 @@ async function seedDefaultMenu() {
       if (menuItemId) {
         await connection.query(
           `UPDATE menu_items
-           SET description = ?, category = ?, price = ?, stock_quantity = ?, image_url = ?
+           SET description = ?, category = ?
            WHERE id = ?`,
-          [dish.description, dish.category, dish.price, 10, dish.imageUrl, menuItemId],
+          [dish.description, dish.category, menuItemId],
         );
       } else {
         const [result] = await connection.query(
@@ -169,7 +169,7 @@ function requireAuth(req, res, next) {
   const session = sessions.get(token);
   if (!session || session.expiresAt <= Date.now()) {
     if (token) sessions.delete(token);
-    return res.status(401).json({ error: 'Please sign in to continue' });
+    return res.status(401).json({ error: 'Sign in to continue.' });
   }
   req.user = session.user;
   next();
@@ -178,7 +178,7 @@ function requireAuth(req, res, next) {
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'You do not have permission to do that' });
+      return res.status(403).json({ error: 'You are not authorized to perform this action.' });
     }
     next();
   };
@@ -296,7 +296,7 @@ async function setOrderLineStatus(connection, lineId, status, changedBy) {
   const line = rows[0];
   if (status === 'approved' && line.status === 'pending') {
     if (Number(line.stock_quantity) < Number(line.quantity)) {
-      const error = new Error('This dish is still unavailable. Update stock before approving.');
+      const error = new Error('Insufficient stock. Update inventory before approving this order item.');
       error.statusCode = 409;
       throw error;
     }
@@ -310,7 +310,7 @@ async function setOrderLineStatus(connection, lineId, status, changedBy) {
   } else if (status === 'completed' && line.status === 'approved') {
     await connection.query('UPDATE order_items SET status = ? WHERE id = ?', [status, line.id]);
   } else {
-    const error = new Error(`Cannot change dish order from ${line.status} to ${status}`);
+    const error = new Error(`Cannot change order item status from ${line.status} to ${status}`);
     error.statusCode = 409;
     throw error;
   }
@@ -443,14 +443,14 @@ async function updateOrderLifecycle(connection, order, nextStatus, user) {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ message: 'Higher Level Restaurant & Takeaway Uganda API is running' });
+  res.json({ message: 'HIGHER LEVEL Restaurant & Takeaway Uganda API is running' });
 });
 
 app.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
-      return res.status(400).json({ error: 'name, email and password are all required' });
+      return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
     const passwordHash = await bcrypt.hash(password, 10);
     const userRole = 'customer';
@@ -505,7 +505,7 @@ app.get('/menu', async (req, res) => {
     res.json(getDefaultMenuRows(rows));
   } catch (err) {
     console.error('MENU ERROR:', err.message);
-    res.status(500).json({ error: 'Could not load menu: ' + err.message });
+    res.status(500).json({ error: 'Could not load the food menu: ' + err.message });
   }
 });
 
@@ -516,17 +516,17 @@ app.post('/order', requireAuth, async (req, res) => {
   const deliveryAddress = String(req.body.delivery_address || '').trim();
   const contactPhone = String(req.body.contact_phone || '').trim();
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'items are required' });
+    return res.status(400).json({ error: 'At least one order item is required.' });
   }
   if (!['pickup', 'delivery'].includes(deliveryType)) {
-    return res.status(400).json({ error: 'Choose pickup or delivery' });
+    return res.status(400).json({ error: 'Select pickup or delivery.' });
   }
   if (
     deliveryType === 'delivery' &&
     (!deliveryAddress || deliveryAddress.length > 255 || !/^[+0-9()\-\s]{7,20}$/.test(contactPhone) ||
       contactPhone.replace(/\D/g, '').length < 7)
   ) {
-    return res.status(400).json({ error: 'Delivery requires a valid address and contact phone number' });
+    return res.status(400).json({ error: 'Delivery orders require a valid address and contact phone number.' });
   }
 
   const quantities = new Map();
@@ -534,7 +534,7 @@ app.post('/order', requireAuth, async (req, res) => {
     const itemId = Number(line.itemId);
     const quantity = Number(line.quantity);
     if (!Number.isInteger(itemId) || itemId < 1 || !Number.isInteger(quantity) || quantity < 1) {
-      return res.status(400).json({ error: 'Each order item needs a valid itemId and positive quantity' });
+      return res.status(400).json({ error: 'Each order item requires a valid item ID and positive quantity.' });
     }
     quantities.set(itemId, (quantities.get(itemId) || 0) + quantity);
   }
@@ -733,7 +733,7 @@ app.get('/rider/available-deliveries', requireAuth, requireRole('rider'), async 
       [req.user.id],
     );
     if (!riders.length) {
-      return res.status(403).json({ error: 'Your rider account is not active' });
+      return res.status(403).json({ error: 'Rider access is not active for this account.' });
     }
     if (await syncRiderAvailability(pool, riders[0].id) !== 'available') return res.json([]);
     const [orders] = await pool.query(
@@ -789,7 +789,7 @@ app.post('/rider/deliveries/:orderId/accept', requireAuth, requireRole('rider'),
       [req.user.id],
     );
     if (!riders.length) {
-      const error = new Error('Your rider account is not active');
+      const error = new Error('Rider access is not active for this account.');
       error.statusCode = 403;
       throw error;
     }
@@ -1002,7 +1002,7 @@ app.put('/staff/order-items/:lineId/status', requireAuth, requireRole('admin', '
 app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const { status } = req.body;
   if (!['approved', 'rejected', 'completed', 'preparing', 'ready_for_delivery', 'picked_up', 'cancelled'].includes(status)) {
-    return res.status(400).json({ error: 'Choose a supported order stage' });
+    return res.status(400).json({ error: 'Select a supported order status.' });
   }
 
   const connection = await pool.getConnection();
