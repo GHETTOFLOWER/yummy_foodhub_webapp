@@ -5,8 +5,9 @@ HIGHER LEVEL Restaurant & Takeaway Uganda is a food ordering and delivery platfo
 ## Features
 
 - Customers can register, sign in, browse and search the menu, place takeaway or delivery orders, and track order history.
+- Customers can submit catering requests for eight event types and review their request statuses.
 - Each fixed menu item has a read-only recipe and preparation section, separate from its concise menu description.
-- Staff and admins manage inventory, order stages, delivery operations, rider availability, and the dashboard.
+- Staff and admins manage catering request statuses, inventory, order stages, delivery operations, rider availability, and the dashboard.
 - Riders view ready deliveries, accept a delivery, and update it through pickup, in-transit, and completion stages.
 - Delivery claims are serialized so only one rider can accept an order. Riders become unavailable while they have active deliveries and available again when all active deliveries are complete.
 - Orders and rider delivery status refresh automatically on the customer and rider pages.
@@ -21,6 +22,7 @@ yummy-food-hub-webapp/
 │   ├── server.js
 │   ├── delivery-migration.sql
 │   ├── delivery-claim-migration.sql
+│   ├── catering-migration.sql
 │   └── legacy-data-cleanup-migration.sql
 └── yummy-web/
     ├── app.js
@@ -37,6 +39,7 @@ Apply the migrations in order:
 1. `yummy-backend/delivery-migration.sql`
 2. `yummy-backend/delivery-claim-migration.sql`
 3. `yummy-backend/legacy-data-cleanup-migration.sql`
+4. `yummy-backend/catering-migration.sql`
 
 The cleanup migration removes legacy menu and order fields and an unused table. Back up the database before applying it.
 
@@ -79,6 +82,8 @@ Open `http://localhost:3107`. The health endpoint is `http://localhost:3107/api/
 - `POST /register`, `POST /login`, `POST /logout` — account access
 - `GET /menu` — standard menu
 - `POST /order` — place an order
+- `GET /catering-requests`, `POST /catering-requests` — customer catering requests and status history
+- `GET /admin/catering-requests`, `PUT /admin/catering-requests/:id/status` — staff/admin request review
 - `GET /orders/:userId` — signed-in customer's order history and tracking
 - `GET /staff/orders` — staff order queue
 - `PUT /orders/:id/status` — staff order-stage update

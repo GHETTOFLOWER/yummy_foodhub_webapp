@@ -10,6 +10,8 @@ const state = {
   availableDeliveries: [],
   riderDeliveries: [],
   dashboard: null,
+  cateringRequests: [],
+  adminCateringRequests: [],
   page: 'menu',
   pageHistory: [],
   category: 'All',
@@ -46,6 +48,17 @@ const menuCategories = [
   'Beverages',
   'Special Meals',
   'Side Dishes',
+];
+
+const cateringEventOptions = [
+  ['wedding', 'Weddings'],
+  ['birthday_party', 'Birthday Parties'],
+  ['graduation_party', 'Graduation Parties'],
+  ['corporate_meeting', 'Corporate Meetings'],
+  ['conference', 'Conferences'],
+  ['school_event', 'School Events'],
+  ['religious_event', 'Religious Events'],
+  ['custom_event', 'Custom Events'],
 ];
 
 const imageChoices = [
@@ -243,6 +256,8 @@ async function renderPage() {
     'admin-deliveries': 'Deliveries',
     'available-deliveries': 'Available Deliveries',
     'rider-dashboard': 'My Deliveries',
+    'catering-services': 'Catering Services',
+    'admin-catering': 'Catering Requests',
   };
   crumb.textContent = pages[state.page] || 'Menu';
   if (state.page === 'menu') {
@@ -273,6 +288,26 @@ async function renderPage() {
       renderOrders();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="retry-orders">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'catering-services') {
+    content.innerHTML = '<div class="empty-state">Loading catering services...</div>';
+    try {
+      state.cateringRequests = await api('/catering-requests');
+      renderCateringServices();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">Unable to load catering requests. ${escapeHtml(error.message)} <button data-action="retry-catering">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'admin-catering') {
+    content.innerHTML = '<div class="empty-state">Loading catering requests...</div>';
+    try {
+      state.adminCateringRequests = await api('/admin/catering-requests');
+      renderAdminCateringRequests();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">Unable to load catering requests. ${escapeHtml(error.message)} <button data-action="refresh-catering">Try again</button></div>`;
     }
     return;
   }
@@ -368,6 +403,85 @@ function renderMenu() {
     <label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input id="menu-search" type="search" value="${escapeHtml(state.search)}" placeholder="Search the menu" aria-label="Search menu"></label></div>
     <div class="section-title"><h2>${state.category === 'All' ? 'All Menu Items' : escapeHtml(state.category)}</h2><span>${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}</span></div>
     ${filtered.length ? `<div class="menu-grid">${cards}</div>` : `<div class="empty-state">${state.search ? 'No menu items match your search.' : `No items are currently listed under ${escapeHtml(state.category)}.`}</div>`}`;
+}
+
+function localDateInputValue() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
+function formatEventDate(value) {
+  const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return 'Date unavailable';
+  return new Intl.DateTimeFormat('en-UG', { dateStyle: 'long', timeZone: 'UTC' }).format(date);
+}
+
+function cateringEventLabel(value) {
+  return cateringEventOptions.find(([eventType]) => eventType === value)?.[1] || 'Custom Events';
+}
+
+function renderCateringServices() {
+  const requestCards = state.cateringRequests
+    .map((request) => {
+      const budget = request.budget == null ? 'Not provided' : money(request.budget);
+      return `<article class="catering-request-card">
+        <div class="catering-request-heading">
+          <div><h3>${escapeHtml(cateringEventLabel(request.event_type))}</h3><span>Request #${escapeHtml(request.id)}</span></div>
+          <span class="status-pill ${escapeHtml(request.status)}">${escapeHtml(statusLabel(request.status))}</span>
+        </div>
+        <dl class="catering-request-facts">
+          <div><dt>Event date</dt><dd>${escapeHtml(formatEventDate(request.event_date))}</dd></div>
+          <div><dt>Number of guests</dt><dd>${escapeHtml(request.guest_count)}</dd></div>
+          <div><dt>Venue</dt><dd>${escapeHtml(request.venue)}</dd></div>
+          <div><dt>Phone number</dt><dd>${escapeHtml(request.phone_number)}</dd></div>
+          <div><dt>Budget</dt><dd>${escapeHtml(budget)}</dd></div>
+        </dl>
+        ${request.special_requests ? `<p class="catering-special-requests"><strong>Special requests:</strong> ${escapeHtml(request.special_requests)}</p>` : ''}
+      </article>`;
+    })
+    .join('');
+  document.querySelector('#page-content').innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">EVENT CATERING</p><h1>Catering Services</h1><p>Submit an event catering request for review by our restaurant team.</p></div></div>
+    <div class="catering-layout">
+      <section class="catering-panel" aria-labelledby="catering-form-title">
+        <div class="catering-panel-heading"><h2 id="catering-form-title">Request Catering</h2><p>Provide your event details and preferred contact number.</p></div>
+        <form id="catering-request-form" class="catering-form">
+          <label class="catering-field">Event Type
+            <select name="event_type" required>
+              <option value="">Select an event type</option>
+              ${cateringEventOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="catering-field">Event Date
+            <input name="event_date" type="date" min="${localDateInputValue()}" required />
+          </label>
+          <label class="catering-field">Number of Guests
+            <input name="guest_count" type="number" min="1" max="4294967295" step="1" inputmode="numeric" required />
+          </label>
+          <label class="catering-field">Venue
+            <input name="venue" type="text" maxlength="255" autocomplete="street-address" placeholder="Event venue and location" required />
+          </label>
+          <label class="catering-field">Phone Number
+            <input name="phone_number" type="tel" maxlength="20" autocomplete="tel" placeholder="+256 700 000 000" required />
+          </label>
+          <label class="catering-field">Budget <span class="catering-optional">(Optional)</span>
+            <input name="budget" type="number" min="0" max="9999999999.99" step="0.01" inputmode="decimal" placeholder="UGX" />
+          </label>
+          <label class="catering-field catering-field-wide">Special Requests
+            <textarea name="special_requests" maxlength="2000" rows="4" placeholder="Menu preferences, service details, or other requirements"></textarea>
+          </label>
+          <div class="catering-form-footer catering-field-wide">
+            <p id="catering-form-error" class="form-message" role="alert"></p>
+            <button class="button button-dark" type="submit">Submit Catering Request</button>
+          </div>
+        </form>
+      </section>
+      <section class="catering-history-panel" aria-labelledby="catering-history-title">
+        <div class="catering-panel-heading catering-history-heading"><div><h2 id="catering-history-title">Your Requests</h2><p>Review the current status of your event bookings.</p></div><button class="table-action" data-action="retry-catering">Refresh</button></div>
+        <div class="catering-request-list">${requestCards || '<div class="empty-state">You have not submitted any catering requests.</div>'}</div>
+      </section>
+    </div>`;
 }
 
 function renderOrders() {
@@ -576,11 +690,50 @@ function renderAdminDashboard() {
       return `<article class="dashboard-order-row"><div><strong>Order #${escapeHtml(order.id)}</strong><span>${escapeHtml(order.customer_name)}</span></div><div>${items || 'Order details unavailable'}<small>${escapeHtml(statusLabel(order.delivery_type || 'pickup'))}</small></div><strong>${money(order.total_amount)}</strong><span class="status-pill ${escapeHtml(order.status)}">${escapeHtml(statusLabel(order.status))}</span></article>`;
     })
     .join('');
+  const cateringStats = [
+    ['Total Catering Requests', Number(summary.catering_total_requests) || 0],
+    ['Pending Requests', Number(summary.catering_pending_requests) || 0],
+    ['Approved Requests', Number(summary.catering_approved_requests) || 0],
+    ['Completed Requests', Number(summary.catering_completed_requests) || 0],
+  ];
   document.querySelector('#page-content').innerHTML =
     `<div class="page-heading"><div><p class="eyebrow">RESTAURANT DASHBOARD</p><h1>Restaurant Dashboard</h1><p>Review order activity, inventory levels, and delivery operations.</p></div><div class="dashboard-actions"><button class="table-action" data-action="open-deliveries">Delivery Operations</button><button class="table-action" data-action="open-order-queue">Customer Orders</button><button class="table-action" data-action="refresh-dashboard">↻ Refresh</button></div></div>
   <div class="dashboard-stats">${stats.map(([label, value]) => `<article class="dashboard-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('')}</div>
+  <section class="catering-dashboard-panel"><div class="section-title"><h2>Catering Requests</h2><button class="table-action" data-action="open-catering-requests">View requests</button></div><div class="dashboard-stats catering-dashboard-stats">${cateringStats.map(([label, value]) => `<article class="dashboard-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join('')}</div></section>
   <div class="section-title dashboard-section-title"><h2>Recent orders</h2><span>Newest first</span></div>
   ${rows ? `<div class="dashboard-order-list">${rows}</div>` : '<div class="empty-state">No orders have been placed yet.</div>'}`;
+}
+
+function renderAdminCateringRequests() {
+  const cards = state.adminCateringRequests
+    .map((request) => {
+      const status = String(request.status || 'pending').toLowerCase();
+      const actions = status === 'pending'
+        ? `<button class="table-action approve-button" data-action="update-catering-request" data-status="approved" data-id="${escapeHtml(request.id)}">Approve</button><button class="table-action reject-button" data-action="update-catering-request" data-status="rejected" data-id="${escapeHtml(request.id)}">Reject</button>`
+        : status === 'approved'
+          ? `<button class="table-action approve-button" data-action="update-catering-request" data-status="completed" data-id="${escapeHtml(request.id)}">Mark completed</button>`
+          : '';
+      const budget = request.budget == null ? 'Not provided' : money(request.budget);
+      return `<article class="catering-admin-card">
+        <div class="catering-request-heading">
+          <div><h3>${escapeHtml(cateringEventLabel(request.event_type))}</h3><span>Request #${escapeHtml(request.id)} · ${escapeHtml(formatEventDate(request.event_date))}</span></div>
+          <span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span>
+        </div>
+        <div class="catering-admin-customer"><strong>${escapeHtml(request.customer_name || 'Customer')}</strong><span>${escapeHtml(request.customer_email || 'Email unavailable')}</span></div>
+        <dl class="catering-request-facts">
+          <div><dt>Number of guests</dt><dd>${escapeHtml(request.guest_count)}</dd></div>
+          <div><dt>Venue</dt><dd>${escapeHtml(request.venue)}</dd></div>
+          <div><dt>Phone number</dt><dd>${escapeHtml(request.phone_number)}</dd></div>
+          <div><dt>Budget</dt><dd>${escapeHtml(budget)}</dd></div>
+        </dl>
+        ${request.special_requests ? `<p class="catering-special-requests"><strong>Special requests:</strong> ${escapeHtml(request.special_requests)}</p>` : ''}
+        ${actions ? `<div class="catering-admin-actions">${actions}</div>` : ''}
+      </article>`;
+    })
+    .join('');
+  document.querySelector('#page-content').innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">EVENT CATERING</p><h1>Catering Requests</h1><p>Review customer event details and update request statuses.</p></div><button class="table-action" data-action="refresh-catering">↻ Refresh</button></div>
+    <div class="catering-admin-list">${cards || '<div class="empty-state">No catering requests have been submitted.</div>'}</div>`;
 }
 
 function syncCart() {
@@ -714,6 +867,24 @@ async function updateAdminDelivery(deliveryId, status, button) {
   }
 }
 
+async function updateCateringRequestStatus(requestId, status, button) {
+  button.disabled = true;
+  try {
+    const result = await api(`/admin/catering-requests/${encodeURIComponent(requestId)}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    state.adminCateringRequests = state.adminCateringRequests.map((request) =>
+      String(request.id) === String(requestId) ? { ...request, status: result.status } : request,
+    );
+    renderAdminCateringRequests();
+    showToast(result.message);
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
 async function viewDeliveryHistory(orderId) {
   try {
     const history = await api(`/orders/${encodeURIComponent(orderId)}/delivery-history`);
@@ -814,6 +985,39 @@ async function submitAuth(event) {
   }
 }
 
+async function submitCateringRequest(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('[type="submit"]');
+  const errorMessage = form.querySelector('#catering-form-error');
+  const values = new FormData(form);
+  const request = {
+    event_type: String(values.get('event_type') || ''),
+    event_date: String(values.get('event_date') || ''),
+    guest_count: Number(values.get('guest_count')),
+    venue: String(values.get('venue') || '').trim(),
+    phone_number: String(values.get('phone_number') || '').trim(),
+    budget: String(values.get('budget') || '').trim() || null,
+    special_requests: String(values.get('special_requests') || '').trim(),
+  };
+  errorMessage.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Submitting request…';
+  try {
+    const result = await api('/catering-requests', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    state.cateringRequests = [result.request, ...state.cateringRequests];
+    renderCateringServices();
+    showToast(result.message);
+  } catch (error) {
+    errorMessage.textContent = error.message;
+    submit.disabled = false;
+    submit.textContent = 'Submit Catering Request';
+  }
+}
+
 document.querySelector('#auth-form').addEventListener('submit', submitAuth);
 document.querySelector('#auth-switch').addEventListener('click', () => {
   state.registering = !state.registering;
@@ -851,6 +1055,9 @@ document.querySelector('#page-content').addEventListener('input', (event) => {
     input.setSelectionRange(cursor, cursor);
   }
 });
+document.querySelector('#page-content').addEventListener('submit', (event) => {
+  if (event.target.id === 'catering-request-form') submitCateringRequest(event);
+});
 document.querySelector('#page-content').addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -869,6 +1076,9 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   if (action === 'view-delivery-history') viewDeliveryHistory(id);
   if (action === 'open-order-queue') setPage('staff-orders');
   if (action === 'open-deliveries') setPage('admin-deliveries');
+  if (action === 'open-catering-requests') setPage('admin-catering');
+  if (action === 'update-catering-request') updateCateringRequestStatus(id, target.dataset.status, target);
+  if (action === 'refresh-catering' || action === 'retry-catering') renderPage();
   if (action === 'refresh-inventory') renderPage();
   if (action === 'refresh-dashboard') renderPage();
   if (action === 'refresh-orders' || action === 'refresh-staff-orders') renderPage();

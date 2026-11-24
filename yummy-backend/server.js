@@ -20,6 +20,16 @@ app.use(express.json());
 
 const pool = mysql.createPool(DB_CONFIG);
 const sessions = new Map();
+const cateringEventTypes = new Set([
+  'wedding',
+  'birthday_party',
+  'graduation_party',
+  'corporate_meeting',
+  'conference',
+  'school_event',
+  'religious_event',
+  'custom_event',
+]);
 const defaultMenuSeedName = 'ugandan-dishes';
 const defaultMenuSeedVersion = 6;
 const defaultMenuDishes = [
@@ -186,6 +196,67 @@ function requireRole(...roles) {
       return res.status(403).json({ error: 'You are not authorized to perform this action.' });
     }
     next();
+  };
+}
+
+function validateCateringRequest(body) {
+  const eventType = String(body.event_type || '').trim();
+  if (!cateringEventTypes.has(eventType)) {
+    return { error: 'Select a valid event type.' };
+  }
+
+  const eventDate = String(body.event_date || '').trim();
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(eventDate)
+    ? new Date(`${eventDate}T00:00:00.000Z`)
+    : null;
+  if (
+    !parsedDate ||
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== eventDate ||
+    eventDate < new Date().toISOString().slice(0, 10)
+  ) {
+    return { error: 'Choose a valid event date that is today or later.' };
+  }
+
+  const guestCount = Number(body.guest_count);
+  if (!Number.isSafeInteger(guestCount) || guestCount < 1 || guestCount > 4294967295) {
+    return { error: 'Guest count must be a positive whole number.' };
+  }
+
+  const venue = String(body.venue || '').trim();
+  if (!venue || venue.length > 255) {
+    return { error: 'Venue is required and must be 255 characters or fewer.' };
+  }
+
+  const phoneNumber = String(body.phone_number || '').trim();
+  if (!/^\+?[0-9\s()-]{7,20}$/.test(phoneNumber)) {
+    return { error: 'Enter a valid phone number between 7 and 20 characters.' };
+  }
+
+  const budgetInput = String(body.budget ?? '').trim();
+  let budget = null;
+  if (budgetInput) {
+    budget = Number(budgetInput);
+    if (!Number.isFinite(budget) || budget < 0 || budget > 9999999999.99) {
+      return { error: 'Budget must be a non-negative amount within the supported range.' };
+    }
+  }
+
+  const specialRequests = String(body.special_requests || '').trim();
+  if (specialRequests.length > 2000) {
+    return { error: 'Special requests must be 2,000 characters or fewer.' };
+  }
+
+  return {
+    value: {
+      event_type: eventType,
+      event_date: eventDate,
+      guest_count: guestCount,
+      venue,
+      phone_number: phoneNumber,
+      budget,
+      special_requests: specialRequests || null,
+    },
   };
 }
 
@@ -649,6 +720,106 @@ app.get('/staff/orders', requireAuth, requireRole('admin', 'staff'), async (req,
   }
 });
 
+app.get('/catering-requests', requireAuth, requireRole('customer'), async (req, res) => {
+  try {
+    const [requests] = await pool.query(
+      `SELECT id, event_type, event_date, guest_count, venue, phone_number, budget,
+         special_requests, status, created_at, updated_at
+       FROM catering_requests
+       WHERE customer_id = ?
+       ORDER BY created_at DESC, id DESC`,
+      [req.user.id],
+    );
+    res.json(requests);
+  } catch (err) {
+    console.error('CUSTOMER CATERING REQUESTS ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load catering requests: ' + err.message });
+  }
+});
+
+app.post('/catering-requests', requireAuth, requireRole('customer'), async (req, res) => {
+  const validation = validateCateringRequest(req.body || {});
+  if (validation.error) return res.status(400).json({ error: validation.error });
+
+  try {
+    const request = validation.value;
+    const [result] = await pool.query(
+      `INSERT INTO catering_requests
+        (customer_id, event_type, event_date, guest_count, venue, phone_number, budget, special_requests)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        request.event_type,
+        request.event_date,
+        request.guest_count,
+        request.venue,
+        request.phone_number,
+        request.budget,
+        request.special_requests,
+      ],
+    );
+    res.status(201).json({
+      message: 'Catering request submitted for review.',
+      request: { id: result.insertId, ...request, status: 'pending' },
+    });
+  } catch (err) {
+    console.error('CREATE CATERING REQUEST ERROR:', err.message);
+    res.status(500).json({ error: 'Could not submit the catering request: ' + err.message });
+  }
+});
+
+app.get('/admin/catering-requests', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
+  try {
+    const [requests] = await pool.query(
+      `SELECT cr.*, customer.name AS customer_name, customer.email AS customer_email
+       FROM catering_requests cr
+       LEFT JOIN users customer ON customer.id = cr.customer_id
+       ORDER BY (cr.status = 'pending') DESC, cr.event_date ASC, cr.created_at DESC`,
+    );
+    res.json(requests);
+  } catch (err) {
+    console.error('ADMIN CATERING REQUESTS ERROR:', err.message);
+    res.status(500).json({ error: 'Could not load catering requests: ' + err.message });
+  }
+});
+
+app.put('/admin/catering-requests/:id/status', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
+  const requestId = Number(req.params.id);
+  const status = String(req.body?.status || '').trim();
+  if (!Number.isSafeInteger(requestId) || requestId < 1) {
+    return res.status(400).json({ error: 'A valid catering request ID is required.' });
+  }
+  const transitions = {
+    pending: ['approved', 'rejected'],
+    approved: ['completed'],
+  };
+  if (!['approved', 'rejected', 'completed'].includes(status)) {
+    return res.status(400).json({ error: 'Select a valid catering request status.' });
+  }
+
+  try {
+    const [[request]] = await pool.query('SELECT status FROM catering_requests WHERE id = ?', [requestId]);
+    if (!request) return res.status(404).json({ error: 'Catering request not found.' });
+    if (!(transitions[request.status] || []).includes(status)) {
+      return res.status(409).json({ error: `A ${request.status} request cannot be changed to ${status}.` });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE catering_requests
+       SET status = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = ?`,
+      [status, requestId, request.status],
+    );
+    if (result.affectedRows !== 1) {
+      return res.status(409).json({ error: 'The catering request changed before this update. Refresh and try again.' });
+    }
+    res.json({ message: `Catering request ${status}.`, id: requestId, status });
+  } catch (err) {
+    console.error('UPDATE CATERING REQUEST ERROR:', err.message);
+    res.status(500).json({ error: 'Could not update the catering request: ' + err.message });
+  }
+});
+
 app.get('/admin/dashboard', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   try {
     const [[sales]] = await pool.query(
@@ -671,13 +842,20 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin', 'staff'), async (r
            (SELECT order_id FROM deliveries WHERE rider_id IS NOT NULL)), 0) AS unassigned_deliveries
        FROM orders WHERE delivery_type = 'delivery'`,
     );
+    const [[catering]] = await pool.query(
+      `SELECT COUNT(*) AS catering_total_requests,
+         COALESCE(SUM(status = 'pending'), 0) AS catering_pending_requests,
+         COALESCE(SUM(status = 'approved'), 0) AS catering_approved_requests,
+         COALESCE(SUM(status = 'completed'), 0) AS catering_completed_requests
+       FROM catering_requests`,
+    );
     const [recentOrders] = await pool.query(
       `SELECT o.*, u.name AS customer_name, u.email AS customer_email
        FROM orders o JOIN users u ON u.id = o.user_id
        ORDER BY o.created_at DESC LIMIT 8`,
     );
     res.json({
-      summary: { ...sales, ...listings, ...deliveries },
+      summary: { ...sales, ...listings, ...deliveries, ...catering },
       recentOrders: await attachDeliveryProgress(await attachOrderItems(recentOrders)),
     });
   } catch (err) {
