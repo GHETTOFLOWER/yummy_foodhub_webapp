@@ -404,6 +404,18 @@ test('SQL schema health check validates workflow tables and menu activation colu
   assert.match(queries[2], /SELECT is_active FROM menu_items LIMIT 0/);
 });
 
+test('menu approval migration matches unsigned database IDs and avoids prepared statements', () => {
+  const migration = fs.readFileSync(path.join(__dirname, '..', 'menu-approval-migration.sql'), 'utf8');
+  assert.match(migration, /id INT UNSIGNED NOT NULL AUTO_INCREMENT/);
+  assert.match(migration, /menu_item_id INT UNSIGNED NULL/);
+  assert.match(migration, /requested_by INT UNSIGNED NOT NULL/);
+  assert.match(migration, /reviewed_by INT UNSIGNED NULL/);
+  assert.match(migration, /request_id INT UNSIGNED NOT NULL/);
+  assert.match(migration, /changed_by INT UNSIGNED NULL/);
+  assert.doesNotMatch(migration, /\b(?:PREPARE|EXECUTE|DEALLOCATE)\b/i);
+  assert.doesNotMatch(migration, /ADD COLUMN IF NOT EXISTS/i);
+});
+
 test('invalid menu values and unauthenticated requests are rejected', async (t) => {
   const { baseUrl } = await createFixture(t);
   const unauthorized = await request(baseUrl, '/menu-management/items');

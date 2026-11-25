@@ -1,29 +1,13 @@
-SET @menu_active_column_exists = (
-  SELECT COUNT(*)
-  FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'menu_items'
-    AND COLUMN_NAME = 'is_active'
-);
-
-SET @menu_active_column_ddl = IF(
-  @menu_active_column_exists = 0,
-  'ALTER TABLE menu_items ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1',
-  'SELECT ''menu_items.is_active already exists'''
-);
-
-PREPARE menu_active_column_statement FROM @menu_active_column_ddl;
-EXECUTE menu_active_column_statement;
-DEALLOCATE PREPARE menu_active_column_statement;
+-- menu_items.is_active already exists in this database; no ALTER is needed.
 
 CREATE TABLE IF NOT EXISTS menu_change_requests (
-  id INT NOT NULL AUTO_INCREMENT,
-  menu_item_id INT NULL,
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  menu_item_id INT UNSIGNED NULL,
+  requested_by INT UNSIGNED NOT NULL,
+  reviewed_by INT UNSIGNED NULL,
   action_type VARCHAR(16) NOT NULL,
   proposed_data LONGTEXT NOT NULL,
   status VARCHAR(24) NOT NULL,
-  requested_by INT NOT NULL,
-  reviewed_by INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   reviewed_at TIMESTAMP NULL DEFAULT NULL,
   PRIMARY KEY (id),
@@ -38,11 +22,11 @@ CREATE TABLE IF NOT EXISTS menu_change_requests (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS menu_change_request_history (
-  id INT NOT NULL AUTO_INCREMENT,
-  request_id INT NOT NULL,
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  request_id INT UNSIGNED NOT NULL,
   previous_status VARCHAR(24) NULL,
   new_status VARCHAR(24) NOT NULL,
-  changed_by INT NULL,
+  changed_by INT UNSIGNED NULL,
   notes VARCHAR(500) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

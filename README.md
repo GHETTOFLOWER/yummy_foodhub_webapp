@@ -92,7 +92,7 @@ mysql -h $env:DB_HOST -P $env:DB_PORT -u $env:DB_USER -p $env:DB_NAME < .\yummy-
 mysql -h $env:DB_HOST -P $env:DB_PORT -u $env:DB_USER -p $env:DB_NAME < .\yummy-backend\menu-approval-migration.sql
 ```
 
-The food-review migration creates `food_reviews`. The menu-approval migration adds `menu_items.is_active`, creates `menu_change_requests`, and creates `menu_change_request_history` for request and reviewer audit history. Run each migration once against the intended database; back up existing data before schema changes.
+The food-review migration creates `food_reviews`. The menu-approval migration creates `menu_change_requests` and `menu_change_request_history` for request and reviewer audit history. It expects `menu_items.is_active` to exist already; this column is present in the current database. Workflow foreign-key IDs use `INT UNSIGNED` to match the existing `menu_items` and `users` IDs. Run each migration once against the intended database; back up existing data before schema changes.
 
 The server seeds its standard menu and beverages on startup. Menu items added through menu management are stored in MySQL and are not restricted to the standard seed list. Approved deletions deactivate items rather than removing records, preserving order references and history.
 
