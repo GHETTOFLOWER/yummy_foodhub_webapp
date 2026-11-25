@@ -133,6 +133,24 @@ function createSqlMenuWorkflowRepository(pool) {
   }
 
   return {
+    async verifySchema() {
+      await pool.query(
+        `SELECT id, menu_item_id, action_type, proposed_data, status, requested_by,
+                reviewed_by, created_at, reviewed_at
+         FROM menu_change_requests LIMIT 0`,
+      );
+      await pool.query(
+        `SELECT id, request_id, previous_status, new_status, changed_by, notes, created_at
+         FROM menu_change_request_history LIMIT 0`,
+      );
+      await pool.query('SELECT is_active FROM menu_items LIMIT 0');
+      return {
+        ready: true,
+        tables: ['menu_change_requests', 'menu_change_request_history'],
+        menuItemsActiveColumn: true,
+      };
+    },
+
     async listActiveMenuItems() {
       const [rows] = await pool.query(
         'SELECT mi.* FROM menu_items mi WHERE mi.is_active = 1 ORDER BY mi.category, mi.title, mi.id',
@@ -351,9 +369,39 @@ function createMenuWorkflowRouter({
   const menuManagers = [requireAuth, requireRole('admin', 'staff')];
   const admins = [requireAuth, requireRole('admin')];
 
+  function logWorkflow(level, message, details) {
+    if (typeof logger[level] === 'function') logger[level](message, details);
+  }
+
+  router.use((req, res, next) => {
+    const requestId = crypto.randomUUID();
+    const startedAt = Date.now();
+    res.locals.menuWorkflowRequestId = requestId;
+    res.setHeader('X-Menu-Workflow-Request-Id', requestId);
+    res.on('finish', () => {
+      const details = {
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+        userId: req.user?.id || null,
+        role: req.user?.role || null,
+      };
+      const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+      logWorkflow(level, 'MENU WORKFLOW HTTP REQUEST', details);
+    });
+    next();
+  });
+
   function handleError(res, error, context) {
+    logWorkflow(error.statusCode && error.statusCode < 500 ? 'warn' : 'error', 'MENU WORKFLOW OPERATION FAILED', {
+      requestId: res.locals.menuWorkflowRequestId || null,
+      context,
+      errorCode: error.code || null,
+      errorMessage: error.message,
+    });
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
-    logger.error(`${context}:`, error.message);
     if (['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR'].includes(error.code)) {
       return res.status(503).json({
         error: 'Menu approval database setup is incomplete. Apply yummy-backend/menu-approval-migration.sql and retry.',
@@ -386,12 +434,27 @@ function createMenuWorkflowRouter({
     }
   });
 
+  router.get('/admin/menu-change-requests/health', ...admins, async (_req, res) => {
+    try {
+      if (typeof data.verifySchema !== 'function') {
+        return res.status(501).json({ error: 'Database schema verification is not supported by this repository.' });
+      }
+      res.json(await data.verifySchema());
+    } catch (error) {
+      handleError(res, error, 'MENU APPROVAL SCHEMA CHECK ERROR');
+    }
+  });
+
   router.post('/menu-management/images', ...menuManagers, (req, res) => {
     upload.single('image')(req, res, async (error) => {
       if (error) {
         const status = error.statusCode ||
           (error.code === 'LIMIT_FILE_SIZE' ? 413 : error instanceof multer.MulterError ? 400 : 500);
-        if (status >= 500) logger.error('MENU IMAGE UPLOAD ERROR:', error.message);
+        logWorkflow(status >= 500 ? 'error' : 'warn', 'MENU IMAGE UPLOAD FAILED', {
+          requestId: res.locals.menuWorkflowRequestId || null,
+          errorCode: error.code || null,
+          errorMessage: error.message,
+        });
         return res.status(status).json({
           error: status === 413
             ? 'Image must be 8 MB or smaller.'
@@ -406,11 +469,19 @@ function createMenuWorkflowRouter({
         const image = await fs.promises.readFile(req.file.path);
         if (!isValidImage(image, req.file.mimetype)) {
           await fs.promises.unlink(req.file.path);
+          logWorkflow('warn', 'MENU IMAGE SIGNATURE REJECTED', {
+            requestId: res.locals.menuWorkflowRequestId || null,
+            mimeType: req.file.mimetype,
+          });
           return res.status(400).json({ error: 'The uploaded file is not a valid supported image.' });
         }
         return res.status(201).json({ image_url: `./images/uploads/${req.file.filename}` });
       } catch (uploadError) {
-        logger.error('MENU IMAGE STORAGE ERROR:', uploadError.message);
+        logWorkflow('error', 'MENU IMAGE STORAGE ERROR', {
+          requestId: res.locals.menuWorkflowRequestId || null,
+          errorCode: uploadError.code || null,
+          errorMessage: uploadError.message,
+        });
         return res.status(500).json({ error: 'The uploaded image could not be stored.' });
       }
     });

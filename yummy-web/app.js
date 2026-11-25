@@ -134,16 +134,42 @@ function formatScheduledDateTime(value) {
 async function api(path, options = {}) {
   const token = readStorage('yummy-token');
   const isFormData = options.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'The request could not be completed. Please try again.');
+  const isMenuWorkflowRequest = path.startsWith('/menu-management/') ||
+    path.startsWith('/menu-change-requests/') ||
+    path.startsWith('/admin/menu-change-requests');
+  const method = (options.method || 'GET').toUpperCase();
+  const url = `${API_BASE}${path}`;
+  if (isMenuWorkflowRequest) console.info('[menu-workflow] API request', { method, path });
+
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    if (isMenuWorkflowRequest) console.error('[menu-workflow] API network error', { method, path, message: error.message });
+    throw error;
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (isMenuWorkflowRequest) console.error('[menu-workflow] Invalid API response', { method, path, status: response.status, message: error.message });
+    if (response.ok) throw new Error('The server returned an invalid response.');
+    data = {};
+  }
+  if (!response.ok) {
+    const message = data.error || 'The request could not be completed. Please try again.';
+    if (isMenuWorkflowRequest) console.error('[menu-workflow] API error', { method, path, status: response.status, message });
+    throw new Error(message);
+  }
+  if (isMenuWorkflowRequest) console.info('[menu-workflow] API response', { method, path, status: response.status });
   return data;
 }
 
@@ -892,10 +918,15 @@ function renderMenuManagement() {
           <label class="catering-field catering-field-wide">Description
             <textarea name="description" maxlength="2000" rows="3">${editingItem ? escapeHtml(editingItem.description || '') : ''}</textarea>
           </label>
-          <label class="catering-field catering-field-wide">Menu image <span class="catering-optional">(Optional)</span>
-            <input id="menu-image" name="image" type="file" accept="image/*" capture="environment">
-            <small>Choose an image from this device or take a photo. Maximum size: 8 MB.</small>
+          <label class="catering-field catering-field-wide">Choose an image from gallery or files <span class="catering-optional">(Optional)</span>
+            <input id="menu-image" name="image" type="file" accept="image/*">
+            <small>Select an image from the device gallery or file browser. Maximum size: 8 MB.</small>
           </label>
+          <div class="menu-camera-picker catering-field-wide">
+            <button class="table-action" type="button" data-action="take-menu-photo">Take a photo</button>
+            <small>On supported mobile devices, this opens the camera.</small>
+            <input id="menu-camera-image" class="hidden" name="camera_image" type="file" accept="image/*" capture="environment">
+          </div>
           <input type="hidden" name="existing_image_url" value="${editingItem?.image_url ? escapeHtml(editingItem.image_url) : ''}">
           <div class="menu-image-preview-wrap catering-field-wide ${previewUrl ? '' : 'hidden'}" id="menu-image-preview-wrap">
             <img id="menu-image-preview" src="${previewUrl ? escapeHtml(previewUrl) : ''}" alt="Menu item image preview">
@@ -1278,7 +1309,9 @@ async function submitMenuItem(event) {
   const errorMessage = form.querySelector('#menu-item-form-error');
   const values = new FormData(form);
   const itemId = String(values.get('menu_item_id') || '').trim();
-  const image = values.get('image');
+  const galleryImage = values.get('image');
+  const cameraImage = values.get('camera_image');
+  const image = galleryImage instanceof File && galleryImage.size > 0 ? galleryImage : cameraImage;
   let imageUrl = String(values.get('existing_image_url') || '').trim() || null;
   const payload = {
     title: String(values.get('title') || '').trim(),
@@ -1290,6 +1323,7 @@ async function submitMenuItem(event) {
   errorMessage.textContent = '';
   submit.disabled = true;
   submit.textContent = 'Saving menu item…';
+  console.info('[menu-workflow] Form submit', { action: itemId ? 'edit' : 'create', itemId: itemId || null });
 
   try {
     if (image instanceof File && image.size > 0) {
@@ -1298,6 +1332,7 @@ async function submitMenuItem(event) {
       const uploaded = await api('/menu-management/images', { method: 'POST', body: uploadData });
       imageUrl = uploaded.image_url;
       payload.image_url = imageUrl;
+      console.info('[menu-workflow] Image upload complete', { action: itemId ? 'edit' : 'create' });
     }
     const result = await api(
       itemId ? `/menu-management/items/${encodeURIComponent(itemId)}` : '/menu-management/items',
@@ -1305,9 +1340,11 @@ async function submitMenuItem(event) {
     );
     state.editingMenuItemId = null;
     clearMenuImagePreview();
+    console.info('[menu-workflow] Menu item saved', { action: itemId ? 'edit' : 'create', itemId: itemId || null, status: result.status });
     showToast(result.status === 'approved' ? 'Menu item saved and published' : 'Change request submitted for approval');
     await renderPage();
   } catch (error) {
+    console.error('[menu-workflow] Form submit failed', { action: itemId ? 'edit' : 'create', itemId: itemId || null, message: error.message });
     errorMessage.textContent = error.message;
     submit.disabled = false;
     submit.textContent = itemId ? 'Save changes' : 'Create menu item';
@@ -1318,11 +1355,13 @@ async function deleteMenuItem(itemId, button) {
   const item = state.menuManagementItems.find((entry) => String(entry.id) === String(itemId));
   if (!item || !window.confirm(`Submit a deletion request for "${item.title}"?`)) return;
   button.disabled = true;
+  console.info('[menu-workflow] Delete request', { itemId, role: state.user.role });
   try {
     const result = await api(`/menu-management/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
     showToast(result.status === 'approved' ? 'Menu item deleted' : 'Deletion request submitted for approval');
     await renderPage();
   } catch (error) {
+    console.error('[menu-workflow] Delete request failed', { itemId, message: error.message });
     showToast(error.message);
     button.disabled = false;
   }
@@ -1330,6 +1369,7 @@ async function deleteMenuItem(itemId, button) {
 
 async function reviewMenuRequest(requestId, decision, button) {
   button.disabled = true;
+  console.info('[menu-workflow] Admin review', { requestId, decision });
   try {
     await api(`/admin/menu-change-requests/${encodeURIComponent(requestId)}`, {
       method: 'PUT',
@@ -1338,6 +1378,7 @@ async function reviewMenuRequest(requestId, decision, button) {
     showToast(decision === 'approve' ? 'Menu change approved' : 'Menu change rejected');
     await renderPage();
   } catch (error) {
+    console.error('[menu-workflow] Admin review failed', { requestId, decision, message: error.message });
     showToast(error.message);
     button.disabled = false;
   }
@@ -1478,13 +1519,29 @@ document.querySelector('#page-content').addEventListener('input', (event) => {
     input.setSelectionRange(cursor, cursor);
   }
 });
+document.querySelector('#page-content').addEventListener('focusin', (event) => {
+  if (event.target.closest('#menu-item-form')) {
+    document.querySelector('.floating-contact-actions')?.classList.add('hidden');
+  }
+});
+document.querySelector('#page-content').addEventListener('focusout', (event) => {
+  if (!event.target.closest('#menu-item-form')) return;
+  setTimeout(() => {
+    const form = document.querySelector('#menu-item-form');
+    if (!form?.contains(document.activeElement)) {
+      document.querySelector('.floating-contact-actions')?.classList.remove('hidden');
+    }
+  }, 0);
+});
 document.querySelector('#page-content').addEventListener('change', (event) => {
-  if (event.target.id !== 'menu-image') return;
+  if (!['menu-image', 'menu-camera-image'].includes(event.target.id)) return;
   const form = event.target.form;
   const file = event.target.files?.[0];
   const previewWrap = form.querySelector('#menu-image-preview-wrap');
   const preview = form.querySelector('#menu-image-preview');
   if (file) {
+    const otherInput = form.querySelector(event.target.id === 'menu-image' ? '#menu-camera-image' : '#menu-image');
+    otherInput.value = '';
     clearMenuImagePreview();
     state.menuImagePreviewUrl = URL.createObjectURL(file);
     preview.src = state.menuImagePreviewUrl;
@@ -1519,6 +1576,10 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
     return;
   }
   const { action, id } = target.dataset;
+  if (action === 'take-menu-photo') {
+    document.querySelector('#menu-camera-image')?.click();
+    return;
+  }
   if (action === 'add') addToCart(id);
   if (action === 'review-item') openFoodReview(id, target.dataset.title);
   if (action === 'scroll-to-menu') document.querySelector('#menu-section')?.scrollIntoView({ behavior: 'smooth' });

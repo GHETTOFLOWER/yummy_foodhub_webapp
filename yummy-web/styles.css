@@ -4134,6 +4134,18 @@ textarea:focus-visible {
   padding: 8px;
 }
 
+.menu-camera-picker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.menu-camera-picker small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .menu-item-form .catering-field small {
   color: var(--muted);
   font-size: 10px;

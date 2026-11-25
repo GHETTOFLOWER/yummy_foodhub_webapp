@@ -16,7 +16,7 @@ Higher Level is a restaurant ordering and operations website built with Node.js,
 - Responsive Contact Us section, WhatsApp actions, and Google Maps directions
 - Restaurant dashboard
 - Staff menu-change approval workflow
-- Local menu-image upload with desktop file selection, mobile camera capture, and image preview
+- Local menu-image upload with separate gallery/files and camera selection, plus image preview
 
 ## User roles
 
@@ -117,7 +117,9 @@ Set database values in the environment rather than adding credentials to source 
 - Administrators can review each request, inspect the proposed values and image, then approve or reject it.
 - Approved requests are marked `approved`; rejected requests are marked `rejected`. Requester, reviewer, submission, review, and status history are stored in MySQL.
 - An administrator's approved deletion deactivates the menu item; order history remains intact.
-- Menu images are limited to JPEG, PNG, GIF, or WebP files up to 8 MB. Uploaded files receive unique names and are stored under `yummy-web/images/uploads/`. The menu form supports `accept="image/*"` and `capture="environment"` and shows an image preview before submission.
+- Menu images are limited to JPEG, PNG, GIF, or WebP files up to 8 MB. Uploaded files receive unique names and are stored under `yummy-web/images/uploads/`. The regular image chooser has `accept="image/*"` without a camera-capture hint so mobile browsers can offer gallery and device files. A separate **Take a photo** control uses `capture="environment"` on supported devices. Either selection shows a preview and uploads through the same endpoint.
+- Administrators can verify the required workflow schema against the configured database with `GET /admin/menu-change-requests/health`. It checks the workflow request and history tables and `menu_items.is_active`; a missing table or column returns an actionable migration error.
+- Menu workflow server logs include a request ID, route, HTTP status, duration, and signed-in user role/ID. Browser-console diagnostics use the `[menu-workflow]` prefix and report API, upload, form, delete, and review outcomes without logging credentials or image contents.
 
 ## Testing instructions
 
@@ -127,7 +129,9 @@ Run the backend tests from the repository root:
 npm --prefix yummy-backend test
 ```
 
-The tests exercise the HTTP workflow for staff creation, administrator review and approval, pending edits and deletions, immediate administrator changes, authorization, input validation, image uploads, and re-fetching saved menu state. They use an in-memory repository and do not require a MySQL service. For database integration, apply the migrations to a dedicated test database and exercise the same workflow against that database.
+The tests exercise the HTTP workflow for staff dish and beverage edits/deletions, administrator review and approval, immediate administrator dish and beverage changes, authorization, input validation, schema-health reporting, image uploads from gallery/files/camera sources, served image bytes, and re-fetching saved menu state. They use an in-memory repository and do not require a MySQL service; the SQL schema-health query shape is also checked with a test pool. For a live database check, apply the migrations to a dedicated test database and call `GET /admin/menu-change-requests/health` while signed in as an administrator.
+
+On a real phone or tablet, verify both image controls separately: select an image using the gallery/files chooser, then select **Take a photo** and grant camera access. Confirm the preview before saving and verify the resulting image appears after an administrator approves the menu change. Browser automation can verify upload handling but cannot substitute for device camera permission and hardware testing.
 
 ## Main API routes
 
@@ -139,6 +143,7 @@ The tests exercise the HTTP workflow for staff creation, administrator review an
 - `POST /menu-management/images` — upload a menu image
 - `GET /menu-change-requests/mine` — current user's submitted menu requests
 - `GET /admin/menu-change-requests` — administrator list of pending menu requests
+- `GET /admin/menu-change-requests/health` — administrator-only workflow schema check
 - `PUT /admin/menu-change-requests/:id` — approve or reject a pending request
 - `GET /inventory`, `PUT /inventory/:id` — inventory operations
 - `GET /admin/dashboard` — restaurant operations summary
@@ -149,4 +154,5 @@ The tests exercise the HTTP workflow for staff creation, administrator review an
 - Added beverage menu items and local beverage image paths.
 - Added purchase-verified food ratings and review summaries.
 - Added the restaurant Contact Us section, phone and WhatsApp actions, and responsive map.
-- Added the staff menu approval workflow, administrator review page, audit history, and local image upload/camera preview.
+- Added the staff menu approval workflow, administrator review page, audit history, and local image upload with distinct gallery/files and camera controls.
+- Added staff-facing form and API diagnostics, server request/error logs, and an administrator-only workflow schema health endpoint.

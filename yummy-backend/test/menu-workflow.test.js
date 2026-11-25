@@ -5,7 +5,7 @@ const path = require('node:path');
 const { once } = require('node:events');
 const express = require('express');
 const { test } = require('node:test');
-const { createMenuWorkflowRouter } = require('../menu-workflow');
+const { createMenuWorkflowRouter, createSqlMenuWorkflowRepository } = require('../menu-workflow');
 
 class MemoryMenuRepository {
   constructor() {
@@ -26,6 +26,14 @@ class MemoryMenuRepository {
 
   async listPendingRequests() {
     return [...this.requests.values()].filter((request) => request.status.startsWith('pending_'));
+  }
+
+  async verifySchema() {
+    return {
+      ready: true,
+      tables: ['menu_change_requests', 'menu_change_request_history'],
+      menuItemsActiveColumn: true,
+    };
   }
 
   async createMenuItem(data) {
@@ -126,6 +134,7 @@ async function createFixture(t, repository = new MemoryMenuRepository()) {
   const uploadDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'menu-workflow-test-'));
   const app = express();
   app.use(express.json());
+  app.use('/images/uploads', express.static(uploadDirectory));
   app.use(createMenuWorkflowRouter({
     repository,
     uploadDirectory,
@@ -204,42 +213,67 @@ test('staff create stays pending until an administrator approves it and persists
   const refreshedItems = await request(baseUrl, '/menu-management/items', { role: 'staff' });
   assert.equal(refreshedItems.data.length, 1);
   assert.equal(refreshedItems.data[0].title, 'Test Matooke');
+
+  const beverage = await request(baseUrl, '/menu-management/items', {
+    role: 'staff',
+    method: 'POST',
+    body: menuItem({ title: 'Fresh Mango Juice', category: 'Beverages' }),
+  });
+  assert.equal(beverage.status, 202);
+  assert.equal(beverage.data.status, 'pending_create');
+  const approvedBeverage = await request(baseUrl, `/admin/menu-change-requests/${beverage.data.request.id}`, {
+    role: 'admin',
+    method: 'PUT',
+    body: { decision: 'approve' },
+  });
+  assert.equal(approvedBeverage.data.status, 'approved');
+  const refreshedWithBeverage = await request(baseUrl, '/menu-management/items', { role: 'staff' });
+  assert.equal(refreshedWithBeverage.data.length, 2);
+  assert.equal(refreshedWithBeverage.data.find(({ category }) => category === 'Beverages').title, 'Fresh Mango Juice');
 });
 
-test('staff edits and deletes remain pending until approval', async (t) => {
+test('staff dish and beverage edits and deletes remain pending until approval', async (t) => {
   const { baseUrl, repository } = await createFixture(t);
-  const item = await repository.createMenuItem(menuItem());
-  const edit = await request(baseUrl, `/menu-management/items/${item.id}`, {
-    role: 'staff',
-    method: 'PUT',
-    body: menuItem({ title: 'Updated Matooke', price: 14000 }),
-  });
-  assert.equal(edit.status, 202);
-  assert.equal(edit.data.status, 'pending_edit');
+  for (const [initialItem, updatedTitle] of [
+    [menuItem(), 'Updated Matooke'],
+    [menuItem({ title: 'Coca-Cola', category: 'Beverages' }), 'Updated Coca-Cola'],
+  ]) {
+    const item = await repository.createMenuItem(initialItem);
+    const edit = await request(baseUrl, `/menu-management/items/${item.id}`, {
+      role: 'staff',
+      method: 'PUT',
+      body: { ...initialItem, title: updatedTitle },
+    });
+    assert.equal(edit.status, 202);
+    assert.equal(edit.data.status, 'pending_edit');
 
-  const unchanged = await request(baseUrl, '/menu-management/items', { role: 'staff' });
-  assert.equal(unchanged.data[0].title, 'Test Matooke');
-  await request(baseUrl, `/admin/menu-change-requests/${edit.data.request.id}`, {
-    role: 'admin',
-    method: 'PUT',
-    body: { decision: 'approve' },
-  });
-  assert.equal((await request(baseUrl, '/menu-management/items', { role: 'staff' })).data[0].title, 'Updated Matooke');
+    const unchanged = await request(baseUrl, '/menu-management/items', { role: 'staff' });
+    assert.equal(unchanged.data.find(({ id }) => id === item.id).title, initialItem.title);
+    await request(baseUrl, `/admin/menu-change-requests/${edit.data.request.id}`, {
+      role: 'admin',
+      method: 'PUT',
+      body: { decision: 'approve' },
+    });
+    assert.equal(
+      (await request(baseUrl, '/menu-management/items', { role: 'staff' })).data.find(({ id }) => id === item.id).title,
+      updatedTitle,
+    );
 
-  const deletion = await request(baseUrl, `/menu-management/items/${item.id}`, {
-    role: 'staff',
-    method: 'DELETE',
-  });
-  assert.equal(deletion.status, 202);
-  assert.equal(deletion.data.status, 'pending_delete');
-  assert.equal((await request(baseUrl, '/menu-management/items', { role: 'staff' })).data.length, 1);
-  await request(baseUrl, `/admin/menu-change-requests/${deletion.data.request.id}`, {
-    role: 'admin',
-    method: 'PUT',
-    body: { decision: 'approve' },
-  });
-  assert.equal((await request(baseUrl, '/menu-management/items', { role: 'staff' })).data.length, 0);
-  assert.equal(repository.history.length, 4);
+    const deletion = await request(baseUrl, `/menu-management/items/${item.id}`, {
+      role: 'staff',
+      method: 'DELETE',
+    });
+    assert.equal(deletion.status, 202);
+    assert.equal(deletion.data.status, 'pending_delete');
+    assert.ok((await request(baseUrl, '/menu-management/items', { role: 'staff' })).data.some(({ id }) => id === item.id));
+    await request(baseUrl, `/admin/menu-change-requests/${deletion.data.request.id}`, {
+      role: 'admin',
+      method: 'PUT',
+      body: { decision: 'approve' },
+    });
+    assert.equal((await request(baseUrl, '/menu-management/items', { role: 'staff' })).data.some(({ id }) => id === item.id), false);
+  }
+  assert.equal(repository.history.length, 8);
 });
 
 test('administrator menu changes publish immediately and staff cannot review requests', async (t) => {
@@ -264,6 +298,25 @@ test('administrator menu changes publish immediately and staff cannot review req
   });
   assert.equal(deleted.data.status, 'approved');
 
+  const beverage = await request(baseUrl, '/menu-management/items', {
+    role: 'admin',
+    method: 'POST',
+    body: menuItem({ title: 'Fresh Mango Juice', category: 'Beverages' }),
+  });
+  assert.equal(beverage.status, 201);
+  assert.equal(beverage.data.item.category, 'Beverages');
+  const beverageUpdated = await request(baseUrl, `/menu-management/items/${beverage.data.item.id}`, {
+    role: 'admin',
+    method: 'PUT',
+    body: menuItem({ title: 'Fresh Orange Juice', category: 'Beverages' }),
+  });
+  assert.equal(beverageUpdated.data.status, 'approved');
+  const beverageDeleted = await request(baseUrl, `/menu-management/items/${beverage.data.item.id}`, {
+    role: 'admin',
+    method: 'DELETE',
+  });
+  assert.equal(beverageDeleted.data.status, 'approved');
+
   const forbidden = await request(baseUrl, '/admin/menu-change-requests', { role: 'staff' });
   assert.equal(forbidden.status, 403);
 });
@@ -285,32 +338,35 @@ test('administrator rejection records the decision without publishing the propos
   assert.equal(repository.history.at(-1).changed_by, 1);
 });
 
-test('device and camera image uploads are stored locally and reject invalid image data', async (t) => {
+test('gallery, device-file, and camera image uploads are stored and served locally', async (t) => {
   const { baseUrl, uploadDirectory } = await createFixture(t);
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/rWQAAAAASUVORK5CYII=',
     'base64',
   );
-  const uploadBody = new FormData();
-  uploadBody.append('image', new Blob([png], { type: 'image/png' }), 'menu.png');
-  const uploaded = await request(baseUrl, '/menu-management/images', {
-    role: 'staff',
-    method: 'POST',
-    body: uploadBody,
-  });
-  assert.equal(uploaded.status, 201);
-  assert.match(uploaded.data.image_url, /^\.\/images\/uploads\/menu_\d+_[a-f0-9]+\.png$/);
-  assert.equal(fs.existsSync(path.join(uploadDirectory, path.basename(uploaded.data.image_url))), true);
+  const uploads = [
+    ['gallery.png', png, 'image/png', /\.png$/],
+    ['device-file.png', png, 'image/png', /\.png$/],
+    ['camera.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0]), 'image/jpeg', /\.jpg$/],
+  ];
+  for (const [filename, contents, type, extension] of uploads) {
+    const uploadBody = new FormData();
+    uploadBody.append('image', new Blob([contents], { type }), filename);
+    const uploaded = await request(baseUrl, '/menu-management/images', {
+      role: 'staff',
+      method: 'POST',
+      body: uploadBody,
+    });
+    assert.equal(uploaded.status, 201);
+    assert.match(uploaded.data.image_url, /^\.\/images\/uploads\/menu_\d+_[a-f0-9]+/);
+    assert.match(uploaded.data.image_url, extension);
+    const savedPath = path.join(uploadDirectory, path.basename(uploaded.data.image_url));
+    assert.equal(fs.existsSync(savedPath), true);
 
-  const cameraBody = new FormData();
-  cameraBody.append('image', new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' }), 'camera.jpg');
-  const cameraUpload = await request(baseUrl, '/menu-management/images', {
-    role: 'staff',
-    method: 'POST',
-    body: cameraBody,
-  });
-  assert.equal(cameraUpload.status, 201);
-  assert.match(cameraUpload.data.image_url, /^\.\/images\/uploads\/menu_\d+_[a-f0-9]+\.jpg$/);
+    const displayedImage = await fetch(`${baseUrl}/images/uploads/${path.basename(savedPath)}`);
+    assert.equal(displayedImage.status, 200);
+    assert.deepEqual(Buffer.from(await displayedImage.arrayBuffer()), contents);
+  }
 
   const spoofedBody = new FormData();
   spoofedBody.append('image', new Blob(['not a PNG'], { type: 'image/png' }), 'bad.png');
@@ -320,6 +376,32 @@ test('device and camera image uploads are stored locally and reject invalid imag
     body: spoofedBody,
   });
   assert.equal(rejected.status, 400);
+});
+
+test('administrator can verify the menu approval schema through its health endpoint', async (t) => {
+  const { baseUrl } = await createFixture(t);
+  const health = await request(baseUrl, '/admin/menu-change-requests/health', { role: 'admin' });
+  assert.equal(health.status, 200);
+  assert.equal(health.data.ready, true);
+  assert.deepEqual(health.data.tables, ['menu_change_requests', 'menu_change_request_history']);
+  const forbidden = await request(baseUrl, '/admin/menu-change-requests/health', { role: 'staff' });
+  assert.equal(forbidden.status, 403);
+});
+
+test('SQL schema health check validates workflow tables and menu activation column', async () => {
+  const queries = [];
+  const repository = createSqlMenuWorkflowRepository({
+    async query(sql) {
+      queries.push(sql);
+      return [[], []];
+    },
+  });
+  const result = await repository.verifySchema();
+  assert.equal(result.ready, true);
+  assert.equal(queries.length, 3);
+  assert.match(queries[0], /FROM menu_change_requests LIMIT 0/);
+  assert.match(queries[1], /FROM menu_change_request_history LIMIT 0/);
+  assert.match(queries[2], /SELECT is_active FROM menu_items LIMIT 0/);
 });
 
 test('invalid menu values and unauthenticated requests are rejected', async (t) => {
