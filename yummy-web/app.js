@@ -441,11 +441,14 @@ function renderFoodCard(item, index) {
     : '';
   const rating = Number(item.average_rating) || 0;
   const reviewCount = Number(item.review_count) || 0;
+  const ratingSummary = reviewCount > 0
+    ? `<p class="food-rating" aria-label="${rating.toFixed(1)} out of 5 stars, ${reviewCount} reviews">⭐ ${rating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? 'Review' : 'Reviews'})</p>`
+    : '';
   return `<article class="food-card">
-      <div class="food-photo ${imageUrl ? '' : 'beverage-photo'}">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy">` : '<span class="beverage-illustration" aria-hidden="true">🥤</span>'}<span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
+      <div class="food-photo">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy">` : ''}<span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-description">${escapeHtml(item.description || 'Description unavailable.')}</p>
-      <p class="food-rating" aria-label="${rating.toFixed(1)} out of 5 stars, ${reviewCount} reviews">⭐ ${rating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'})</p>
+      ${ratingSummary}
       ${recipe}
       <div class="food-footer"><span class="stock-label ${outOfStock ? 'out' : ''}">${outOfStock ? 'Out of stock' : `In stock · ${Number(item.stock_quantity)} available`}</span>
       <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add to Cart'}</button></div></div>
@@ -510,8 +513,38 @@ function renderHome() {
         <article class="service-card delivery-card"><span class="service-icon" aria-hidden="true">↗</span><p class="eyebrow">DELIVERY INFORMATION</p><h2>From our kitchen<br><em>to your door.</em></h2><p>Choose delivery at checkout, add your location and phone number, then follow your order as it makes its way to you.</p><button class="text-link" data-page="orders">Track your delivery <span aria-hidden="true">→</span></button></article>
       </section>
 
-      <section class="contact-section" id="contact">
-        <div class="contact-inner"><div><p class="eyebrow">WE WOULD LOVE TO HEAR FROM YOU</p><h2>Let’s make<br><em>something special.</em></h2></div><div class="contact-copy"><p>Looking for a table, planning an event, or have a question about an order? We are here to help.</p><button class="button button-dark" data-page="catering-services">Talk to us about catering <span aria-hidden="true">↗</span></button><button class="text-link" data-page="orders">Need help with an order? View your orders →</button></div></div>
+      <section class="contact-section" id="contact" aria-labelledby="contact-title">
+        <div class="contact-inner">
+          <div class="contact-intro">
+            <p class="eyebrow">VISIT OR GET IN TOUCH</p>
+            <h2 id="contact-title">Contact <em>Us.</em></h2>
+            <p>We look forward to welcoming you. Call, message, or visit us in Kampala.</p>
+            <strong class="contact-business-name">Higher Level Snacks &amp; Takeaway Uganda</strong>
+          </div>
+          <div class="contact-content">
+            <address class="contact-details">
+              <div><span>PHONE</span><a href="tel:+256755636996">+256 755 636996</a></div>
+              <div><span>EMAIL</span><a href="mailto:higherlevelsnacks@gmail.com">higherlevelsnacks@gmail.com</a></div>
+              <div><span>ADDRESS</span><p>Kalerwe Gayaza Road, after GB9 Pub,<br>Kampala, Uganda</p></div>
+              <div><span>WEBSITE</span><a href="https://higherlevel.com" target="_blank" rel="noopener noreferrer">higherlevel.com</a></div>
+            </address>
+            <div class="contact-actions" aria-label="Contact Higher Level">
+              <a class="button button-dark" href="tel:+256755636996">Call Now</a>
+              <a class="button button-outline-dark" href="https://wa.me/256755636996?text=Hello%20Higher%20Level%20Snacks%20%26%20Takeaway%20Uganda" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+              <a class="button button-outline-dark" href="mailto:higherlevelsnacks@gmail.com">Email Us</a>
+              <a class="button button-outline-dark" href="https://www.google.com/maps/dir/?api=1&amp;destination=Kalerwe%20Gayaza%20Road%2C%20after%20GB9%20Pub%2C%20Kampala%2C%20Uganda" target="_blank" rel="noopener noreferrer">Get Directions</a>
+            </div>
+            <div class="contact-map">
+              <iframe
+                title="Map to Higher Level Snacks &amp; Takeaway Uganda"
+                src="https://www.google.com/maps?q=Kalerwe%20Gayaza%20Road%2C%20after%20GB9%20Pub%2C%20Kampala%2C%20Uganda&amp;output=embed"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                allowfullscreen
+              ></iframe>
+            </div>
+          </div>
+        </div>
       </section>
     </div>`;
 }

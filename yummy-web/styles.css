@@ -750,17 +750,6 @@ input:focus-visible {
   font-weight: 700;
   margin: -5px 0 13px;
 }
-.beverage-photo {
-  align-items: center;
-  background: linear-gradient(135deg, #f8e9ff, #fff2dd);
-  display: flex;
-  justify-content: center;
-}
-.beverage-illustration {
-  font-size: 66px;
-  position: relative;
-  z-index: 1;
-}
 .recipe-details {
   border-top: 1px solid var(--line);
   color: var(--muted);
@@ -3025,6 +3014,7 @@ textarea:focus-visible {
 }
 
 .food-photo img {
+  display: block;
   height: 100%;
   object-fit: cover;
   transition: transform 0.5s ease;
@@ -3309,14 +3299,15 @@ textarea:focus-visible {
 }
 
 .contact-section {
-  background: #eee7de;
+  background: linear-gradient(135deg, #f4efe8, #fffaf3);
+  scroll-margin-top: 90px;
 }
 
 .contact-inner {
-  align-items: center;
-  display: flex;
-  gap: 60px;
-  justify-content: space-between;
+  align-items: start;
+  display: grid;
+  gap: clamp(32px, 6vw, 82px);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   margin: 0 auto;
   max-width: 1320px;
   padding: clamp(62px, 8vw, 102px) clamp(20px, 5vw, 76px);
@@ -3326,25 +3317,136 @@ textarea:focus-visible {
   font-size: clamp(40px, 5vw, 62px);
 }
 
-.contact-copy {
-  display: grid;
-  gap: 17px;
+.contact-intro > p:not(.eyebrow) {
+  color: #716b64;
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 20px 0;
   max-width: 410px;
 }
 
-.contact-copy > p {
-  color: #716b64;
-  font-size: 12px;
-  line-height: 1.8;
-  margin: 0 0 5px;
-}
-
-.contact-copy .button {
-  justify-self: start;
-}
-
-.contact-copy .text-link {
+.contact-business-name {
+  color: #3c332a;
+  display: block;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 17px;
   line-height: 1.5;
+  max-width: 300px;
+}
+
+.contact-content {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.contact-details {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.contact-details > div {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid #e8dfd3;
+  min-width: 0;
+  padding: 17px;
+}
+
+.contact-details span {
+  color: #9a6a38;
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  margin-bottom: 8px;
+}
+
+.contact-details a,
+.contact-details p {
+  color: #28231e;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.contact-details a:hover {
+  color: #a85e16;
+  text-decoration: underline;
+}
+
+.contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.contact-actions .button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 42px;
+  text-decoration: none;
+}
+
+.contact-map {
+  aspect-ratio: 16 / 9;
+  background: #e6ddd1;
+  min-height: 250px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.contact-map iframe {
+  border: 0;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.floating-contact-actions {
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 10px;
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 15;
+}
+
+.floating-contact {
+  align-items: center;
+  border-radius: 999px;
+  box-shadow: 0 8px 26px rgba(27, 24, 19, 0.22);
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 46px;
+  min-width: 112px;
+  padding: 0 18px;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.floating-contact:hover {
+  box-shadow: 0 11px 30px rgba(27, 24, 19, 0.28);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.floating-whatsapp {
+  background: #168a5b;
+}
+
+.floating-call {
+  background: #24211d;
+  display: none;
 }
 
 .site-footer {
@@ -3763,10 +3865,31 @@ textarea:focus-visible {
   }
 
   .contact-inner {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 24px;
+    grid-template-columns: 1fr;
+    gap: 30px;
     padding: 60px 23px;
+  }
+
+  .contact-details {
+    grid-template-columns: 1fr;
+  }
+
+  .contact-map {
+    min-height: 230px;
+  }
+
+  .floating-contact-actions {
+    gap: 8px;
+    right: 12px;
+  }
+
+  .floating-contact {
+    min-height: 44px;
+    min-width: 100px;
+  }
+
+  .floating-call {
+    display: inline-flex;
   }
 
   .site-footer {

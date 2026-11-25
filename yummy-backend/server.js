@@ -6,7 +6,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
 const DB_CONFIG = {
-  host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
+  host: processenv.DB_HOST || 'sql7.freesqldatabase.com',
   user: process.env.DB_USER || 'sql7839427',
   password: process.env.DB_PASSWORD || 'p1mf1WJAyC',
   database: process.env.DB_NAME || 'sql7839427',
@@ -31,7 +31,7 @@ const cateringEventTypes = new Set([
   'custom_event',
 ]);
 const defaultMenuSeedName = 'ugandan-dishes';
-const defaultMenuSeedVersion = 7;
+const defaultMenuSeedVersion = 8;
 const defaultMenuDishes = [
   { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Local Favorites', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', recipeSteps: ['Boil cassava until tender.', 'Simmer beef and green peas in a seasoned stew; serve with greens.'], imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
   { title: 'Flaky Ugandan Chapati', category: 'Side Dishes', price: 3000, description: 'Ugandan chapati, crisp outside and soft inside.', recipeSteps: ['Prepare and rest a soft wheat dough.', 'Roll into layers and pan-fry until golden.'], imageUrl: './images/Chapati.jpeg' },
@@ -47,21 +47,21 @@ const defaultMenuDishes = [
   { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Main Courses', price: 7000, description: 'Posho served with seasoned beans, okra stew, and steamed doodo greens.', recipeSteps: ['Simmer beans and okra with seasoning until tender.', 'Serve with posho and steamed doodo.'], imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
   { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Main Courses', price: 19000, description: 'Steamed rice served with tilapia stew, greens, and fresh fruit juice.', recipeSteps: ['Steam rice and prepare tilapia stew with greens.', 'Serve with fresh fruit juice.'], imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
   { title: 'Whole Fried Tilapia and Chips', category: 'Special Meals', price: 25000, description: 'Whole fried tilapia served with golden chips, fresh vegetables, and lime.', recipeSteps: ['Season and fry tilapia until cooked through.', 'Serve with chips, fresh vegetables, and lime.'], imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
-  { title: 'Coca-Cola', category: 'Beverages', price: 3000, description: 'Chilled Coca-Cola.', imageUrl: null },
-  { title: 'Fanta Orange', category: 'Beverages', price: 3000, description: 'Chilled Fanta Orange.', imageUrl: null },
-  { title: 'Sprite', category: 'Beverages', price: 3000, description: 'Chilled Sprite.', imageUrl: null },
-  { title: 'Stoney Tangawizi', category: 'Beverages', price: 3000, description: 'Chilled ginger-flavoured Stoney Tangawizi.', imageUrl: null },
-  { title: 'Pepsi', category: 'Beverages', price: 3000, description: 'Chilled Pepsi.', imageUrl: null },
-  { title: 'Mountain Dew', category: 'Beverages', price: 3000, description: 'Chilled Mountain Dew.', imageUrl: null },
-  { title: 'Fresh Mango Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared mango juice.', imageUrl: null },
-  { title: 'Fresh Orange Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared orange juice.', imageUrl: null },
-  { title: 'Passion Fruit Juice', category: 'Beverages', price: 5000, description: 'Fresh passion fruit juice.', imageUrl: null },
-  { title: 'Watermelon Juice', category: 'Beverages', price: 5000, description: 'Fresh watermelon juice.', imageUrl: null },
-  { title: 'Pineapple Juice', category: 'Beverages', price: 5000, description: 'Fresh pineapple juice.', imageUrl: null },
-  { title: 'Mixed Tropical Juice', category: 'Beverages', price: 6000, description: 'A refreshing blend of tropical fruit juices.', imageUrl: null },
-  { title: 'African Tea', category: 'Beverages', price: 3000, description: 'Traditional African tea.', imageUrl: null },
-  { title: 'Black Coffee', category: 'Beverages', price: 4000, description: 'Freshly brewed black coffee.', imageUrl: null },
-  { title: 'Mineral Water', category: 'Beverages', price: 2000, description: 'Bottled mineral water.', imageUrl: null },
+  { title: 'Coca-Cola', category: 'Beverages', price: 3000, description: 'Chilled Coca-Cola.', imageUrl: './images/beverages/coca-cola.jpg' },
+  { title: 'Fanta Orange', category: 'Beverages', price: 3000, description: 'Chilled Fanta Orange.', imageUrl: './images/beverages/fanta.jpg' },
+  { title: 'Sprite', category: 'Beverages', price: 3000, description: 'Chilled Sprite.', imageUrl: './images/beverages/sprite.jpg' },
+  { title: 'Stoney Tangawizi', category: 'Beverages', price: 3000, description: 'Chilled ginger-flavoured Stoney Tangawizi.', imageUrl: './images/beverages/stoney.jpg' },
+  { title: 'Pepsi', category: 'Beverages', price: 3000, description: 'Chilled Pepsi.', imageUrl: './images/beverages/pepsi.jpg' },
+  { title: 'Mountain Dew', category: 'Beverages', price: 3000, description: 'Chilled Mountain Dew.', imageUrl: './images/beverages/mountain-dew.jpg' },
+  { title: 'Fresh Mango Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared mango juice.', imageUrl: './images/beverages/mango-juice.jpg' },
+  { title: 'Fresh Orange Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared orange juice.', imageUrl: './images/beverages/orange-juice.jpg' },
+  { title: 'Passion Fruit Juice', category: 'Beverages', price: 5000, description: 'Fresh passion fruit juice.', imageUrl: './images/beverages/passion-fruit.jpg' },
+  { title: 'Watermelon Juice', category: 'Beverages', price: 5000, description: 'Fresh watermelon juice.', imageUrl: './images/beverages/watermelon-juice.jpg' },
+  { title: 'Pineapple Juice', category: 'Beverages', price: 5000, description: 'Fresh pineapple juice.', imageUrl: './images/beverages/pineapple-juice.jpg' },
+  { title: 'Mixed Tropical Juice', category: 'Beverages', price: 6000, description: 'A refreshing blend of tropical fruit juices.', imageUrl: './images/beverages/tropical-juice.jpg' },
+  { title: 'African Tea', category: 'Beverages', price: 3000, description: 'Traditional African tea.', imageUrl: './images/beverages/african-tea.jpg' },
+  { title: 'Black Coffee', category: 'Beverages', price: 4000, description: 'Freshly brewed black coffee.', imageUrl: './images/beverages/coffee.jpg' },
+  { title: 'Mineral Water', category: 'Beverages', price: 2000, description: 'Bottled mineral water.', imageUrl: './images/beverages/water.jpg' },
 ];
 
 function getDefaultMenuRows(rows) {
@@ -132,9 +132,10 @@ async function seedDefaultMenu() {
       if (menuItemId) {
         await connection.query(
           `UPDATE menu_items
-           SET description = ?, category = ?
+           SET description = ?, category = ?,
+             image_url = CASE WHEN ? = 'Beverages' THEN ? ELSE image_url END
            WHERE id = ?`,
-          [dish.description, dish.category, menuItemId],
+          [dish.description, dish.category, dish.category, dish.imageUrl, menuItemId],
         );
       } else {
         const [result] = await connection.query(
