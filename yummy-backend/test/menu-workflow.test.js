@@ -122,9 +122,8 @@ class MemoryMenuRepository {
   }
 }
 
-async function createFixture(t) {
+async function createFixture(t, repository = new MemoryMenuRepository()) {
   const uploadDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'menu-workflow-test-'));
-  const repository = new MemoryMenuRepository();
   const app = express();
   app.use(express.json());
   app.use(createMenuWorkflowRouter({
@@ -338,4 +337,21 @@ test('invalid menu values and unauthenticated requests are rejected', async (t) 
     method: 'POST',
   });
   assert.equal(missingBody.status, 400);
+});
+
+test('missing workflow database tables return an actionable migration error', async (t) => {
+  const repository = new MemoryMenuRepository();
+  repository.requestChange = async () => {
+    const error = new Error('Table menu_change_requests does not exist');
+    error.code = 'ER_NO_SUCH_TABLE';
+    throw error;
+  };
+  const { baseUrl } = await createFixture(t, repository);
+  const response = await request(baseUrl, '/menu-management/items/70', {
+    role: 'staff',
+    method: 'PUT',
+    body: menuItem(),
+  });
+  assert.equal(response.status, 503);
+  assert.match(response.data.error, /menu-approval-migration\.sql/);
 });

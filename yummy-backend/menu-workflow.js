@@ -354,6 +354,11 @@ function createMenuWorkflowRouter({
   function handleError(res, error, context) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     logger.error(`${context}:`, error.message);
+    if (['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR'].includes(error.code)) {
+      return res.status(503).json({
+        error: 'Menu approval database setup is incomplete. Apply yummy-backend/menu-approval-migration.sql and retry.',
+      });
+    }
     return res.status(500).json({ error: 'The menu operation could not be completed.' });
   }
 
@@ -437,9 +442,9 @@ function createMenuWorkflowRouter({
           return res.status(404).json({ error: 'Menu item not found.' });
         }
         return res.json({ id, status: 'approved' });
-      }else{
+      }
       const request = await data.requestChange(req.user.id, id, 'edit', parsed.value);
-      return res.status(202).json({ request, status: request.status });}
+      return res.status(202).json({ request, status: request.status });
     } catch (error) {
       return handleError(res, error, 'MENU ITEM UPDATE ERROR');
     }
