@@ -12,7 +12,7 @@ const state = {
   dashboard: null,
   cateringRequests: [],
   adminCateringRequests: [],
-  page: 'menu',
+  page: 'home',
   pageHistory: [],
   category: 'All',
   search: '',
@@ -259,9 +259,10 @@ function showApp() {
     month: 'short',
     day: 'numeric',
   }).format(new Date());
-  state.page = isAdmin || isStaff ? 'dashboard' : isRider ? 'available-deliveries' : 'menu';
+  state.page = isAdmin || isStaff ? 'dashboard' : isRider ? 'available-deliveries' : 'home';
   state.pageHistory = [];
   setActiveNav();
+  document.querySelector('#current-year').textContent = new Date().getFullYear();
   renderPage();
 }
 
@@ -281,6 +282,16 @@ function setPage(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+async function openHomeSection(sectionId) {
+  if (state.page !== 'home') {
+    state.pageHistory.push(state.page);
+    state.page = 'home';
+    setActiveNav();
+    await renderPage();
+  }
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function goBack() {
   const previousPage = state.pageHistory.pop();
   if (!previousPage) return;
@@ -294,6 +305,7 @@ async function renderPage() {
   const content = document.querySelector('#page-content');
   const crumb = document.querySelector('#page-crumb');
   const pages = {
+    home: 'Home',
     menu: 'Menu',
     orders: 'Orders',
     inventory: 'Inventory',
@@ -306,6 +318,17 @@ async function renderPage() {
     'admin-catering': 'Catering Requests',
   };
   crumb.textContent = pages[state.page] || 'Menu';
+  content.classList.toggle('home-content', state.page === 'home');
+  if (state.page === 'home') {
+    content.innerHTML = '<div class="empty-state">Preparing something delicious...</div>';
+    try {
+      state.menu = getDefaultMenu(await api('/menu'));
+      renderHome();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">Unable to load the food menu. ${escapeHtml(error.message)} <button data-action="retry-menu">Try again</button></div>`;
+    }
+    return;
+  }
   if (state.page === 'menu') {
     content.innerHTML = '<div class="empty-state">Loading food menu...</div>';
     try {
@@ -410,41 +433,98 @@ async function renderPage() {
   }
 }
 
-function renderMenu() {
-  const categories = ['All', ...menuCategories];
-  if (!categories.includes(state.category)) state.category = 'All';
-  const filtered = state.menu.filter((item) => {
-    const matchesCategory = state.category === 'All' || item.category === state.category;
-    const query = state.search.trim().toLowerCase();
-    const searchable = [
-      item.title,
-      item.category,
-      item.description,
-    ]
-      .join(' ')
-      .toLowerCase();
-    return matchesCategory && (!query || searchable.includes(query));
-  });
-  const cards = filtered
-    .map((item, index) => {
-      const outOfStock = Number(item.stock_quantity) <= 0;
-      const imageUrl = item.image_url || imageChoices[index % imageChoices.length];
-      const safeImageUrl = String(imageUrl).replace(/['"]/g, '\\$&');
-      const recipe = Array.isArray(item.recipe_steps) && item.recipe_steps.length
-        ? `<details class="recipe-details"><summary>Recipe &amp; Preparation</summary><ol>${item.recipe_steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`
-        : '';
-      return `<article class="food-card">
-      <div class="food-photo" style="background-image:url('${safeImageUrl}')"><span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
+function renderFoodCard(item, index) {
+  const outOfStock = Number(item.stock_quantity) <= 0;
+  const imageUrl = item.image_url || imageChoices[index % imageChoices.length];
+  const recipe = Array.isArray(item.recipe_steps) && item.recipe_steps.length
+    ? `<details class="recipe-details"><summary>Recipe &amp; Preparation</summary><ol>${item.recipe_steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`
+    : '';
+  return `<article class="food-card">
+      <div class="food-photo"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy"><span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-description">${escapeHtml(item.description || 'Description unavailable.')}</p>
       ${recipe}
       <div class="food-footer"><span class="stock-label ${outOfStock ? 'out' : ''}">${outOfStock ? 'Out of stock' : `In stock · ${Number(item.stock_quantity)} available`}</span>
       <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add to Cart'}</button></div></div>
     </article>`;
-    })
-    .join('');
+}
+
+function renderHome() {
+  const featured = state.menu.slice(0, 3).map(renderFoodCard).join('');
+  const allMeals = state.menu.map(renderFoodCard).join('');
+  const categories = ['All', ...menuCategories];
   document.querySelector('#page-content').innerHTML = `
-    <div class="page-heading"><div><p class="eyebrow">HIGHER LEVEL RESTAURANT & TAKEAWAY UGANDA</p><h1>Menu</h1><p>Browse the current restaurant menu.</p></div></div>
+    <div class="home-page">
+      <section class="hero-section" id="home">
+        <div class="hero-content">
+          <div class="hero-brand-lockup"><img src="./images/logo.jpg" alt="Higher Level Restaurant logo"><span>Higher Level Restaurant &amp; Takeaway Uganda</span></div>
+          <p class="eyebrow">A LITTLE TASTE OF HOME</p>
+          <h1>Made with heart.<br><em>Served with joy.</em></h1>
+          <p class="hero-intro">Gather around for fresh Ugandan favourites, generous portions, and the kind of food that brings everyone together.</p>
+          <div class="hero-actions">
+            <button class="button button-dark" data-action="scroll-to-menu">Order Now <span aria-hidden="true">↗</span></button>
+            <button class="button button-outline" data-page="catering-services">Catering Services</button>
+          </div>
+          <p class="hero-note">Freshly prepared · Proudly Ugandan · Always welcoming</p>
+        </div>
+        <a class="hero-scroll" href="#about-section" data-section="about-section" aria-label="Scroll to learn about us"><span></span>Discover our story</a>
+      </section>
+
+      <section class="welcome-strip" aria-label="Restaurant highlights">
+        <span>Local ingredients</span><i></i><span>Made fresh every day</span><i></i><span>Here for every occasion</span>
+      </section>
+
+      <section class="home-section about-section" id="about-section">
+        <div class="about-image"><img src="./images/Matooke,Rice&Byenda.jpeg" alt="A traditional Ugandan meal of matooke, rice and byenda" loading="lazy"><span class="image-note">The comfort of home, on every plate.</span></div>
+        <div class="about-copy"><p class="eyebrow">ABOUT HIGHER LEVEL</p><h2>Rooted in tradition.<br><em>Made for sharing.</em></h2><p>At Higher Level, we celebrate the flavours that make Ugandan food special. From slow-cooked stews to beloved local classics, every meal is prepared with care and served with a warm welcome.</p><p>Whether it is lunch with a friend, a family gathering, or a celebration for a crowd, there is always room at our table.</p><button class="text-link" data-action="scroll-to-menu">Explore the menu <span aria-hidden="true">→</span></button></div>
+      </section>
+
+      <section class="home-section featured-section">
+        <div class="section-heading"><div><p class="eyebrow">FEATURED MEALS</p><h2>Good things to <em>tuck into.</em></h2></div><button class="text-link" data-action="scroll-to-menu">See the full menu <span aria-hidden="true">→</span></button></div>
+        <div class="menu-grid featured-grid">${featured}</div>
+      </section>
+
+      <section class="category-section">
+        <div class="home-section">
+          <div class="section-heading"><div><p class="eyebrow">FIND YOUR FAVOURITE</p><h2>Something for <em>every craving.</em></h2></div></div>
+          <div class="category-showcase">${categories.map((category, index) => `<button class="category-tile" data-action="home-category" data-category="${escapeHtml(category)}"><span class="category-number">0${index + 1}</span><strong>${category === 'All' ? 'All the good stuff' : escapeHtml(category)}</strong><span class="category-arrow" aria-hidden="true">↗</span></button>`).join('')}</div>
+        </div>
+      </section>
+
+      <section class="home-section menu-section" id="menu-section">
+        <div class="section-heading menu-heading"><div><p class="eyebrow">FRESH FROM OUR KITCHEN</p><h2>Our <em>menu.</em></h2><p>Big-hearted Ugandan favourites, made fresh and ready when you are.</p></div><button class="button button-outline-dark" data-action="schedule-order">Schedule an Order</button></div>
+        <div class="category-list home-menu-categories">${categories.map((category) => `<button class="category-button ${category === 'All' ? 'active' : ''}" data-action="home-category" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}</div>
+        <div class="menu-grid">${allMeals}</div>
+      </section>
+
+      <section class="catering-feature" id="catering-section">
+        <div class="catering-feature-copy"><p class="eyebrow">CATERING SERVICES</p><h2>Good food makes<br><em>good memories.</em></h2><p>Bring the flavours of Higher Level to your next celebration. Tell us about your event and we will help make the food one less thing to worry about.</p><button class="button button-light" data-page="catering-services">Plan your catering <span aria-hidden="true">↗</span></button></div>
+        <div class="catering-feature-image" role="img" aria-label="A table set for a shared meal"></div>
+      </section>
+
+      <section class="home-section service-section">
+        <article class="service-card schedule-card"><span class="service-icon" aria-hidden="true">◷</span><p class="eyebrow">SCHEDULED ORDERS</p><h2>Your meal,<br><em>on your time.</em></h2><p>Choose your dishes now and schedule your order for a future date and time that works for you.</p><button class="text-link" data-action="schedule-order">Schedule an Order <span aria-hidden="true">→</span></button></article>
+        <article class="service-card delivery-card"><span class="service-icon" aria-hidden="true">↗</span><p class="eyebrow">DELIVERY INFORMATION</p><h2>From our kitchen<br><em>to your door.</em></h2><p>Choose delivery at checkout, add your location and phone number, then follow your order as it makes its way to you.</p><button class="text-link" data-page="orders">Track your delivery <span aria-hidden="true">→</span></button></article>
+      </section>
+
+      <section class="contact-section" id="contact">
+        <div class="contact-inner"><div><p class="eyebrow">WE WOULD LOVE TO HEAR FROM YOU</p><h2>Let’s make<br><em>something special.</em></h2></div><div class="contact-copy"><p>Looking for a table, planning an event, or have a question about an order? We are here to help.</p><button class="button button-dark" data-page="catering-services">Talk to us about catering <span aria-hidden="true">↗</span></button><button class="text-link" data-page="orders">Need help with an order? View your orders →</button></div></div>
+      </section>
+    </div>`;
+}
+
+function renderMenu() {
+  const categories = ['All', ...menuCategories];
+  if (!categories.includes(state.category)) state.category = 'All';
+  const filtered = state.menu.filter((item) => {
+    const matchesCategory = state.category === 'All' || item.category === state.category;
+    const query = state.search.trim().toLowerCase();
+    const searchable = [item.title, item.category, item.description].join(' ').toLowerCase();
+    return matchesCategory && (!query || searchable.includes(query));
+  });
+  const cards = filtered.map(renderFoodCard).join('');
+  document.querySelector('#page-content').innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">FRESH FROM OUR KITCHEN</p><h1>Our Menu</h1><p>Browse the current restaurant menu.</p></div></div>
     <div class="menu-tools"><div class="menu-filters"><div class="category-list">${categories.map((category) => `<button class="category-button ${category === state.category ? 'active' : ''}" data-action="category" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}</div></div>
     <label class="search-box"><span class="search-icon" aria-hidden="true">⌕</span><input id="menu-search" type="search" value="${escapeHtml(state.search)}" placeholder="Search the menu" aria-label="Search menu"></label></div>
     <div class="section-title"><h2>${state.category === 'All' ? 'All Menu Items' : escapeHtml(state.category)}</h2><span>${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}</span></div>
@@ -1182,9 +1262,27 @@ document.querySelector('#page-content').addEventListener('submit', (event) => {
 });
 document.querySelector('#page-content').addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
-  if (!target) return;
+  if (!target) {
+    const control = event.target.closest('[data-page], [data-section]');
+    if (control?.dataset.section) openHomeSection(control.dataset.section);
+    else if (control?.dataset.page) setPage(control.dataset.page);
+    return;
+  }
   const { action, id } = target.dataset;
   if (action === 'add') addToCart(id);
+  if (action === 'scroll-to-menu') document.querySelector('#menu-section')?.scrollIntoView({ behavior: 'smooth' });
+  if (action === 'schedule-order') {
+    if (!state.cart.length) {
+      showToast('Add meals to your cart before scheduling an order');
+      return;
+    }
+    state.checkout.orderType = 'scheduled';
+    renderCart();
+  }
+  if (action === 'home-category') {
+    state.category = target.dataset.category;
+    setPage('menu');
+  }
   if (action === 'category') {
     state.category = target.dataset.category;
     renderMenu();
@@ -1251,9 +1349,14 @@ document.querySelector('#modal-root').addEventListener('click', (event) => {
   }
   if (target.dataset.action === 'checkout') placeOrder(target);
 });
-document.querySelectorAll('.nav-link').forEach((button) =>
-  button.addEventListener('click', () => {
-    setPage(button.dataset.page);
+document.querySelectorAll('#app-view [data-page], #app-view [data-section]').forEach((control) =>
+  control.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (control.dataset.section) {
+      openHomeSection(control.dataset.section);
+    } else {
+      setPage(control.dataset.page);
+    }
   }),
 );
 document.addEventListener('keydown', (event) => {
