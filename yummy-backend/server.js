@@ -4,9 +4,10 @@ const crypto = require('crypto');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const { createMenuWorkflowRouter } = require('./menu-workflow');
 
 const DB_CONFIG = {
-  host: processenv.DB_HOST || 'sql7.freesqldatabase.com',
+  host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
   user: process.env.DB_USER || 'sql7839427',
   password: process.env.DB_PASSWORD || 'p1mf1WJAyC',
   database: process.env.DB_NAME || 'sql7839427',
@@ -65,29 +66,11 @@ const defaultMenuDishes = [
 ];
 
 function getDefaultMenuRows(rows) {
-  const allowedTitles = new Set(defaultMenuDishes.map((dish) => dish.title));
-  const dishesByTitle = new Map();
-  for (const row of rows) {
-    if (allowedTitles.has(row.title) && !dishesByTitle.has(row.title)) {
-      dishesByTitle.set(row.title, row);
-    }
-  }
-  const menu = defaultMenuDishes
-    .map((dish) => {
-      const row = dishesByTitle.get(dish.title);
-      return row
-        ? {
-            ...row,
-            ...(dish.category === 'Beverages' ? { image_url: dish.imageUrl } : {}),
-            recipe_steps: dish.recipeSteps,
-          }
-        : null;
-    })
-    .filter(Boolean);
-  if (menu.length !== defaultMenuDishes.length) {
-    throw new Error('The default menu seed is incomplete (' + menu.length + '/' + defaultMenuDishes.length + ' dishes)');
-  }
-  return menu;
+  const defaultDishesByTitle = new Map(defaultMenuDishes.map((dish) => [dish.title, dish]));
+  return rows.map((row) => {
+    const seededDish = defaultDishesByTitle.get(row.title);
+    return seededDish ? { ...row, recipe_steps: seededDish.recipeSteps } : row;
+  });
 }
 
 async function removeDishIfUnordered(connection, menuItemId) {
@@ -220,6 +203,8 @@ function requireRole(...roles) {
     next();
   };
 }
+
+app.use(createMenuWorkflowRouter({ pool, requireAuth, requireRole }));
 
 function validateCateringRequest(body) {
   const eventType = String(body.event_type || '').trim();
@@ -642,6 +627,7 @@ app.get('/menu', async (req, res) => {
          FROM food_reviews
          GROUP BY menu_item_id
        ) review_summary ON review_summary.menu_item_id = mi.id
+       WHERE mi.is_active = 1
        ORDER BY mi.category, mi.title, mi.id`,
     );
     res.json(getDefaultMenuRows(rows));
@@ -770,7 +756,7 @@ app.post('/order', requireAuth, async (req, res) => {
 
     for (const line of orderLines) {
       const [rows] = await connection.query(
-        'SELECT price, stock_quantity FROM menu_items WHERE id = ? FOR UPDATE',
+        'SELECT price, stock_quantity FROM menu_items WHERE id = ? AND is_active = 1 FOR UPDATE',
         [line.itemId],
       );
       if (rows.length === 0) {
@@ -1005,7 +991,7 @@ app.get('/admin/dashboard', requireAuth, requireRole('admin', 'staff'), async (r
     const [[listings]] = await pool.query(
       `SELECT COUNT(*) AS total_dishes,
          COALESCE(SUM(stock_quantity > 0), 0) AS available_dishes
-       FROM menu_items`,
+       FROM menu_items WHERE is_active = 1`,
     );
     const [[deliveries]] = await pool.query(
       `SELECT COUNT(*) AS delivery_orders,
@@ -1328,7 +1314,7 @@ app.get('/orders/:orderId/delivery-history', requireAuth, async (req, res) => {
 app.get('/inventory', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   try {
     await ensureDefaultMenuSeeded();
-    const [rows] = await pool.query('SELECT mi.* FROM menu_items mi ORDER BY mi.id');
+    const [rows] = await pool.query('SELECT mi.* FROM menu_items mi WHERE mi.is_active = 1 ORDER BY mi.id');
     res.json(getDefaultMenuRows(rows));
   } catch (err) {
     console.error('INVENTORY ERROR:', err.message);
@@ -1343,7 +1329,7 @@ app.put('/inventory/:id', requireAuth, requireRole('admin', 'staff'), async (req
     if (!Number.isInteger(quantity) || quantity < 0) {
       return res.status(400).json({ error: 'Stock quantity must be a non-negative whole number' });
     }
-    const [result] = await pool.query('UPDATE menu_items SET stock_quantity = ? WHERE id = ?', [
+    const [result] = await pool.query('UPDATE menu_items SET stock_quantity = ? WHERE id = ? AND is_active = 1', [
       quantity,
       req.params.id,
     ]);

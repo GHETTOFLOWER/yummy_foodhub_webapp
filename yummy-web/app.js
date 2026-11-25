@@ -12,6 +12,11 @@ const state = {
   dashboard: null,
   cateringRequests: [],
   adminCateringRequests: [],
+  menuManagementItems: [],
+  ownMenuRequests: [],
+  adminMenuRequests: [],
+  editingMenuItemId: null,
+  menuImagePreviewUrl: '',
   page: 'home',
   pageHistory: [],
   category: 'All',
@@ -30,23 +35,6 @@ const state = {
     phone: '',
   },
 };
-
-const defaultMenuTitles = [
-  'Boiled Cassava & Beef-Pea Stew',
-  'Flaky Ugandan Chapati',
-  'Kalo, Cassava & Beef Stew',
-  'Chicken Luwombo with Matooke & Sweet Potato',
-  'Beef Luwombo with Matooke, Lumonde & Pumpkin',
-  'Matooke Katogo with Beef & Butula',
-  'Matooke Katogo with Tilapia Fish',
-  'Matooke, Mayuni & Byenda',
-  'Matooke, Rice & Byenda',
-  'Matooke, Mayuni & Fish Stew',
-  'Posho & Tilapia Fish Stew with Greens',
-  'Posho, Beans & Okra Stew with Doodo',
-  'Steamed Rice, Fish Stew & Fresh Fruit Juice',
-  'Whole Fried Tilapia and Chips',
-];
 
 const menuCategories = [
   'Main Courses',
@@ -67,43 +55,6 @@ const cateringEventOptions = [
   ['religious_event', 'Religious Events'],
   ['custom_event', 'Custom Events'],
 ];
-
-const imageChoices = [
-  './images/Boiled Cassava & Beef-Pea Stew.jpeg',
-  './images/Chapati.jpeg',
-  './images/Kalo,Cassava&Beaf Stew.jpeg',
-  './images/Luwombo Lwenkoko with Matooke and Sweet Potatoes.jpeg',
-  './images/luwombo lwenyama with Matooke,Lumonde & Pumpkin.jpeg',
-  './images/Matooke Katogo with Beef and Butula.jpeg',
-  './images/Matooke Katogo with Tilapia fish.jpeg',
-  './images/Matooke,Mayuni & Byenda.jpeg',
-  './images/Matooke,Rice&Byenda.jpeg',
-  './images/MatookeMayuuni and Fish Stew.jpeg',
-  './images/Posho& Tilapia Fish Stew with Greens.jpeg',
-  './images/Posho,Beans & Okra Stew with Doodo.jpeg',
-  './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg',
-  './images/Whole Fried Tilapia and Chips.jpeg',
-];
-
-function getDefaultMenu(menuItems) {
-  const allowedTitles = new Set(defaultMenuTitles);
-  const itemsByTitle = new Map();
-  for (const item of menuItems) {
-    if (allowedTitles.has(item.title) && !itemsByTitle.has(item.title)) {
-      itemsByTitle.set(item.title, item);
-    }
-  }
-  const menu = defaultMenuTitles
-    .map((title, index) => {
-      const item = itemsByTitle.get(title);
-      return item ? { ...item, image_url: imageChoices[index] } : null;
-    })
-    .filter(Boolean);
-  if (menu.length !== defaultMenuTitles.length) {
-    throw new Error(`The food menu is incomplete (${menu.length}/${defaultMenuTitles.length} items).`);
-  }
-  return [...menu, ...menuItems.filter((item) => item.category === 'Beverages')];
-}
 
 function readStorage(key) {
   try {
@@ -182,10 +133,11 @@ function formatScheduledDateTime(value) {
 
 async function api(path, options = {}) {
   const token = readStorage('yummy-token');
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -275,6 +227,7 @@ function setActiveNav() {
 
 function setPage(page) {
   if (page === state.page) return;
+  if (state.page === 'menu-management') clearMenuImagePreview();
   state.pageHistory.push(state.page);
   state.page = page;
   setActiveNav();
@@ -316,13 +269,15 @@ async function renderPage() {
     'rider-dashboard': 'My Deliveries',
     'catering-services': 'Catering Services',
     'admin-catering': 'Catering Requests',
+    'menu-management': 'Menu Management',
+    'admin-menu-requests': 'Menu Change Requests',
   };
   crumb.textContent = pages[state.page] || 'Menu';
   content.classList.toggle('home-content', state.page === 'home');
   if (state.page === 'home') {
     content.innerHTML = '<div class="empty-state">Preparing something delicious...</div>';
     try {
-      state.menu = getDefaultMenu(await api('/menu'));
+      state.menu = await api('/menu');
       renderHome();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">Unable to load the food menu. ${escapeHtml(error.message)} <button data-action="retry-menu">Try again</button></div>`;
@@ -332,7 +287,7 @@ async function renderPage() {
   if (state.page === 'menu') {
     content.innerHTML = '<div class="empty-state">Loading food menu...</div>';
     try {
-      state.menu = getDefaultMenu(await api('/menu'));
+      state.menu = await api('/menu');
       renderMenu();
     } catch (error) {
       content.innerHTML = `<div class="error-panel">Unable to load the food menu. ${escapeHtml(error.message)} <button data-action="retry-menu">Try again</button></div>`;
@@ -430,13 +385,36 @@ async function renderPage() {
     } catch (error) {
       content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="retry-inventory">Try again</button></div>`;
     }
+    return;
+  }
+  if (state.page === 'menu-management') {
+    content.innerHTML = '<div class="empty-state">Loading menu management...</div>';
+    try {
+      [state.menuManagementItems, state.ownMenuRequests] = await Promise.all([
+        api('/menu-management/items'),
+        api('/menu-change-requests/mine'),
+      ]);
+      renderMenuManagement();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-menu-management">Try again</button></div>`;
+    }
+    return;
+  }
+  if (state.page === 'admin-menu-requests') {
+    content.innerHTML = '<div class="empty-state">Loading menu change requests...</div>';
+    try {
+      state.adminMenuRequests = await api('/admin/menu-change-requests');
+      renderAdminMenuRequests();
+    } catch (error) {
+      content.innerHTML = `<div class="error-panel">${escapeHtml(error.message)} <button data-action="refresh-menu-requests">Try again</button></div>`;
+    }
   }
 }
 
-function renderFoodCard(item, index) {
+function renderFoodCard(item) {
   const outOfStock = Number(item.stock_quantity) <= 0;
   const isBeverage = item.category === 'Beverages';
-  const imageUrl = item.image_url || (isBeverage ? '' : imageChoices[index % imageChoices.length]);
+  const imageUrl = item.image_url || '';
   if (isBeverage && !imageUrl) {
     console.warn(`Missing beverage image_url for "${item.title}".`);
   }
@@ -696,6 +674,9 @@ function renderOrders() {
 
 function statusLabel(status) {
   const labels = {
+    pending_create: 'Pending creation',
+    pending_edit: 'Pending edit',
+    pending_delete: 'Pending deletion',
     scheduled: 'Scheduled',
     ready_for_delivery: 'Ready For Delivery',
     out_for_delivery: 'Out For Delivery',
@@ -870,6 +851,106 @@ function renderInventory() {
   document.querySelector('#page-content').innerHTML =
     `<div class="page-heading"><div><p class="eyebrow">INVENTORY MANAGEMENT</p><h1>Inventory Management</h1><p>Review stock levels and update available quantities.</p></div><button class="table-action" data-action="refresh-inventory">↻ Refresh</button></div>
   <div class="content-table"><div class="table-head"><span>Menu item</span><span>Category</span><span>Availability</span><span></span></div>${rows || '<div class="empty-state">No inventory items available.</div>'}</div>`;
+}
+
+function renderMenuManagement() {
+  const isAdmin = state.user.role === 'admin';
+  const editingItem = state.menuManagementItems.find((item) => String(item.id) === String(state.editingMenuItemId));
+  const items = state.menuManagementItems.map((item) => `
+    <article class="menu-manager-item">
+      ${item.image_url ? `<img class="menu-manager-thumbnail" src="${escapeHtml(item.image_url)}" alt="" loading="lazy">` : '<div class="menu-manager-thumbnail menu-manager-no-image">No image</div>'}
+      <div class="menu-manager-item-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${money(item.price)}</span><small>${escapeHtml(item.description || '')}</small></div>
+      <div class="menu-manager-actions"><button class="table-action" data-action="edit-menu-item" data-id="${escapeHtml(item.id)}">Edit</button><button class="table-action reject-button" data-action="delete-menu-item" data-id="${escapeHtml(item.id)}">Delete</button></div>
+    </article>`).join('');
+  const requests = state.ownMenuRequests.map((request) => `
+    <article class="menu-own-request">
+      <div><strong>${escapeHtml(request.proposed_data.title || 'Menu item')}</strong><span>${escapeHtml(menuRequestTypeLabel(request.action_type))}</span></div>
+      <span class="status-pill ${escapeHtml(request.status)}">${escapeHtml(statusLabel(request.status))}</span>
+      <time>${escapeHtml(formatDateTime(request.created_at))}</time>
+    </article>`).join('');
+  const previewUrl = state.menuImagePreviewUrl || editingItem?.image_url || '';
+
+  document.querySelector('#page-content').innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">MENU OPERATIONS</p><h1>Menu Management</h1><p>${isAdmin ? 'Administrator changes are published immediately.' : 'Staff menu changes are submitted for administrator approval.'}</p></div><button class="table-action" data-action="refresh-menu-management">↻ Refresh</button></div>
+    <div class="menu-management-layout">
+      <section class="menu-management-panel">
+        <div class="catering-panel-heading"><h2>${editingItem ? 'Edit menu item' : 'Create a menu item'}</h2><p>Add a dish or beverage to the customer menu.</p></div>
+        <form id="menu-item-form" class="menu-item-form">
+          <input type="hidden" name="menu_item_id" value="${editingItem ? escapeHtml(editingItem.id) : ''}">
+          <label class="catering-field">Dish or beverage name
+            <input name="title" type="text" maxlength="150" value="${editingItem ? escapeHtml(editingItem.title) : ''}" required>
+          </label>
+          <label class="catering-field">Category
+            <select name="category" required>
+              <option value="">Select a category</option>
+              ${menuCategories.map((category) => `<option value="${escapeHtml(category)}" ${editingItem?.category === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="catering-field">Price (UGX)
+            <input name="price" type="number" min="0.01" max="99999999.99" step="0.01" inputmode="decimal" value="${editingItem ? escapeHtml(editingItem.price) : ''}" required>
+          </label>
+          <label class="catering-field catering-field-wide">Description
+            <textarea name="description" maxlength="2000" rows="3">${editingItem ? escapeHtml(editingItem.description || '') : ''}</textarea>
+          </label>
+          <label class="catering-field catering-field-wide">Menu image <span class="catering-optional">(Optional)</span>
+            <input id="menu-image" name="image" type="file" accept="image/*" capture="environment">
+            <small>Choose an image from this device or take a photo. Maximum size: 8 MB.</small>
+          </label>
+          <input type="hidden" name="existing_image_url" value="${editingItem?.image_url ? escapeHtml(editingItem.image_url) : ''}">
+          <div class="menu-image-preview-wrap catering-field-wide ${previewUrl ? '' : 'hidden'}" id="menu-image-preview-wrap">
+            <img id="menu-image-preview" src="${previewUrl ? escapeHtml(previewUrl) : ''}" alt="Menu item image preview">
+          </div>
+          <div class="menu-form-actions catering-field-wide">
+            <p id="menu-item-form-error" class="form-message" role="alert"></p>
+            ${editingItem ? '<button class="table-action" type="button" data-action="cancel-menu-edit">Cancel</button>' : ''}
+            <button class="button button-dark" type="submit">${editingItem ? 'Save changes' : 'Create menu item'}</button>
+          </div>
+        </form>
+      </section>
+      <section class="menu-manager-list">
+        <div class="catering-panel-heading"><h2>Active menu items</h2><p>${state.menuManagementItems.length} items currently visible to customers.</p></div>
+        <div class="menu-manager-items">${items || '<div class="empty-state">No active menu items.</div>'}</div>
+      </section>
+    </div>
+    <section class="menu-own-requests-panel">
+      <div class="catering-panel-heading"><h2>Your change requests</h2><p>Staff requests appear here until an administrator reviews them.</p></div>
+      <div class="menu-own-requests">${requests || '<div class="empty-state">No menu change requests yet.</div>'}</div>
+    </section>`;
+}
+
+function menuRequestTypeLabel(actionType) {
+  return {
+    create: 'New menu item',
+    edit: 'Edit menu item',
+    delete: 'Delete menu item',
+  }[actionType] || 'Menu change';
+}
+
+function renderAdminMenuRequests() {
+  const requests = state.adminMenuRequests.map((request) => {
+    const item = request.proposed_data || {};
+    const action = menuRequestTypeLabel(request.action_type);
+    const image = item.image_url
+      ? `<img class="menu-request-image" src="${escapeHtml(item.image_url)}" alt="Preview of ${escapeHtml(item.title || 'menu item')}" loading="lazy">`
+      : '<div class="menu-request-image menu-manager-no-image">No preview image</div>';
+    return `<article class="menu-change-request">
+      ${image}
+      <div class="menu-change-request-content">
+        <div class="menu-change-request-heading"><div><h2>${escapeHtml(item.title || 'Menu item')}</h2><span class="status-pill ${escapeHtml(request.status)}">${escapeHtml(statusLabel(request.status))}</span></div><strong>${escapeHtml(action)}</strong></div>
+        <dl class="menu-request-facts">
+          <div><dt>Category</dt><dd>${escapeHtml(item.category || '—')}</dd></div>
+          <div><dt>Description</dt><dd>${escapeHtml(item.description || '—')}</dd></div>
+          <div><dt>Price</dt><dd>${item.price == null ? '—' : money(item.price)}</dd></div>
+          <div><dt>Staff member</dt><dd>${escapeHtml(request.requested_by_name || request.requested_by_email || `User ${request.requested_by}`)}</dd></div>
+          <div><dt>Date submitted</dt><dd>${escapeHtml(formatDateTime(request.created_at))}</dd></div>
+        </dl>
+        <div class="menu-manager-actions"><button class="table-action approve-button" data-action="review-menu-request" data-status="approve" data-id="${escapeHtml(request.id)}">Approve</button><button class="table-action reject-button" data-action="review-menu-request" data-status="reject" data-id="${escapeHtml(request.id)}">Reject</button></div>
+      </div>
+    </article>`;
+  }).join('');
+  document.querySelector('#page-content').innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">ADMINISTRATOR REVIEW</p><h1>Menu Change Requests</h1><p>Approve or reject pending staff menu changes.</p></div><button class="table-action" data-action="refresh-menu-requests">↻ Refresh</button></div>
+    <div class="menu-change-request-list">${requests || '<div class="empty-state">There are no pending menu change requests.</div>'}</div>`;
 }
 
 function renderAdminDashboard() {
@@ -1181,6 +1262,83 @@ async function changeStock(itemId) {
   }
 }
 
+function clearMenuImagePreview() {
+  if (state.menuImagePreviewUrl) URL.revokeObjectURL(state.menuImagePreviewUrl);
+  state.menuImagePreviewUrl = '';
+}
+
+async function submitMenuItem(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('[type="submit"]');
+  const errorMessage = form.querySelector('#menu-item-form-error');
+  const values = new FormData(form);
+  const itemId = String(values.get('menu_item_id') || '').trim();
+  const image = values.get('image');
+  let imageUrl = String(values.get('existing_image_url') || '').trim() || null;
+  const payload = {
+    title: String(values.get('title') || '').trim(),
+    category: String(values.get('category') || ''),
+    description: String(values.get('description') || '').trim(),
+    price: Number(values.get('price')),
+    image_url: imageUrl,
+  };
+  errorMessage.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Saving menu item…';
+
+  try {
+    if (image instanceof File && image.size > 0) {
+      const uploadData = new FormData();
+      uploadData.append('image', image);
+      const uploaded = await api('/menu-management/images', { method: 'POST', body: uploadData });
+      imageUrl = uploaded.image_url;
+      payload.image_url = imageUrl;
+    }
+    const result = await api(
+      itemId ? `/menu-management/items/${encodeURIComponent(itemId)}` : '/menu-management/items',
+      { method: itemId ? 'PUT' : 'POST', body: JSON.stringify(payload) },
+    );
+    state.editingMenuItemId = null;
+    clearMenuImagePreview();
+    showToast(result.status === 'approved' ? 'Menu item saved and published' : 'Change request submitted for approval');
+    await renderPage();
+  } catch (error) {
+    errorMessage.textContent = error.message;
+    submit.disabled = false;
+    submit.textContent = itemId ? 'Save changes' : 'Create menu item';
+  }
+}
+
+async function deleteMenuItem(itemId, button) {
+  const item = state.menuManagementItems.find((entry) => String(entry.id) === String(itemId));
+  if (!item || !window.confirm(`Submit a deletion request for "${item.title}"?`)) return;
+  button.disabled = true;
+  try {
+    const result = await api(`/menu-management/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+    showToast(result.status === 'approved' ? 'Menu item deleted' : 'Deletion request submitted for approval');
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+async function reviewMenuRequest(requestId, decision, button) {
+  button.disabled = true;
+  try {
+    await api(`/admin/menu-change-requests/${encodeURIComponent(requestId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ decision }),
+    });
+    showToast(decision === 'approve' ? 'Menu change approved' : 'Menu change rejected');
+    await renderPage();
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
 async function updateOrderItemStatus(lineId, status, button) {
   button.disabled = true;
   button.textContent = status === 'approved' ? 'Approving...' : status === 'rejected' ? 'Rejecting...' : 'Updating...';
@@ -1316,6 +1474,28 @@ document.querySelector('#page-content').addEventListener('input', (event) => {
     input.setSelectionRange(cursor, cursor);
   }
 });
+document.querySelector('#page-content').addEventListener('change', (event) => {
+  if (event.target.id !== 'menu-image') return;
+  const form = event.target.form;
+  const file = event.target.files?.[0];
+  const previewWrap = form.querySelector('#menu-image-preview-wrap');
+  const preview = form.querySelector('#menu-image-preview');
+  if (file) {
+    clearMenuImagePreview();
+    state.menuImagePreviewUrl = URL.createObjectURL(file);
+    preview.src = state.menuImagePreviewUrl;
+    previewWrap.classList.remove('hidden');
+  } else {
+    const existing = form.elements.existing_image_url.value;
+    if (existing) {
+      preview.src = existing;
+      previewWrap.classList.remove('hidden');
+    } else {
+      preview.removeAttribute('src');
+      previewWrap.classList.add('hidden');
+    }
+  }
+});
 document.querySelector('#page-content').addEventListener('error', (event) => {
   const image = event.target;
   if (image instanceof HTMLImageElement && image.closest('.food-card')?.dataset.category === 'Beverages') {
@@ -1324,6 +1504,7 @@ document.querySelector('#page-content').addEventListener('error', (event) => {
 }, true);
 document.querySelector('#page-content').addEventListener('submit', (event) => {
   if (event.target.id === 'catering-request-form') submitCateringRequest(event);
+  if (event.target.id === 'menu-item-form') submitMenuItem(event);
 });
 document.querySelector('#page-content').addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
@@ -1366,10 +1547,23 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   if (action === 'update-catering-request') updateCateringRequestStatus(id, target.dataset.status, target);
   if (action === 'refresh-catering' || action === 'retry-catering') renderPage();
   if (action === 'refresh-inventory') renderPage();
+  if (action === 'refresh-menu-management' || action === 'refresh-menu-requests') renderPage();
   if (action === 'refresh-dashboard') renderPage();
   if (action === 'refresh-orders' || action === 'refresh-staff-orders') renderPage();
   if (action === 'refresh-deliveries' || action === 'refresh-rider-deliveries') renderPage();
   if (action === 'refresh-available-deliveries') renderPage();
+  if (action === 'edit-menu-item') {
+    clearMenuImagePreview();
+    state.editingMenuItemId = id;
+    renderMenuManagement();
+  }
+  if (action === 'cancel-menu-edit') {
+    clearMenuImagePreview();
+    state.editingMenuItemId = null;
+    renderMenuManagement();
+  }
+  if (action === 'delete-menu-item') deleteMenuItem(id, target);
+  if (action === 'review-menu-request') reviewMenuRequest(id, target.dataset.status, target);
   if (action === 'retry-menu' || action === 'retry-orders' || action === 'retry-inventory') renderPage();
 });
 document.querySelector('#modal-root').addEventListener('input', (event) => {
