@@ -31,7 +31,7 @@ const cateringEventTypes = new Set([
   'custom_event',
 ]);
 const defaultMenuSeedName = 'ugandan-dishes';
-const defaultMenuSeedVersion = 8;
+const defaultMenuSeedVersion = 9;
 const defaultMenuDishes = [
   { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Local Favorites', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', recipeSteps: ['Boil cassava until tender.', 'Simmer beef and green peas in a seasoned stew; serve with greens.'], imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
   { title: 'Flaky Ugandan Chapati', category: 'Side Dishes', price: 3000, description: 'Ugandan chapati, crisp outside and soft inside.', recipeSteps: ['Prepare and rest a soft wheat dough.', 'Roll into layers and pan-fry until golden.'], imageUrl: './images/Chapati.jpeg' },
@@ -75,7 +75,13 @@ function getDefaultMenuRows(rows) {
   const menu = defaultMenuDishes
     .map((dish) => {
       const row = dishesByTitle.get(dish.title);
-      return row ? { ...row, recipe_steps: dish.recipeSteps } : null;
+      return row
+        ? {
+            ...row,
+            ...(dish.category === 'Beverages' ? { image_url: dish.imageUrl } : {}),
+            recipe_steps: dish.recipeSteps,
+          }
+        : null;
     })
     .filter(Boolean);
   if (menu.length !== defaultMenuDishes.length) {

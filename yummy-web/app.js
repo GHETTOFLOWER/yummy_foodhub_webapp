@@ -435,7 +435,11 @@ async function renderPage() {
 
 function renderFoodCard(item, index) {
   const outOfStock = Number(item.stock_quantity) <= 0;
-  const imageUrl = item.image_url || (item.category === 'Beverages' ? '' : imageChoices[index % imageChoices.length]);
+  const isBeverage = item.category === 'Beverages';
+  const imageUrl = item.image_url || (isBeverage ? '' : imageChoices[index % imageChoices.length]);
+  if (isBeverage && !imageUrl) {
+    console.warn(`Missing beverage image_url for "${item.title}".`);
+  }
   const recipe = Array.isArray(item.recipe_steps) && item.recipe_steps.length
     ? `<details class="recipe-details"><summary>Recipe &amp; Preparation</summary><ol>${item.recipe_steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`
     : '';
@@ -444,7 +448,7 @@ function renderFoodCard(item, index) {
   const ratingSummary = reviewCount > 0
     ? `<p class="food-rating" aria-label="${rating.toFixed(1)} out of 5 stars, ${reviewCount} reviews">⭐ ${rating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? 'Review' : 'Reviews'})</p>`
     : '';
-  return `<article class="food-card">
+  return `<article class="food-card" data-category="${escapeHtml(item.category || '')}">
       <div class="food-photo">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy">` : ''}<span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-description">${escapeHtml(item.description || 'Description unavailable.')}</p>
@@ -1312,6 +1316,12 @@ document.querySelector('#page-content').addEventListener('input', (event) => {
     input.setSelectionRange(cursor, cursor);
   }
 });
+document.querySelector('#page-content').addEventListener('error', (event) => {
+  const image = event.target;
+  if (image instanceof HTMLImageElement && image.closest('.food-card')?.dataset.category === 'Beverages') {
+    console.warn(`Beverage image failed to load for "${image.alt}": ${image.currentSrc || image.src}`);
+  }
+}, true);
 document.querySelector('#page-content').addEventListener('submit', (event) => {
   if (event.target.id === 'catering-request-form') submitCateringRequest(event);
 });
