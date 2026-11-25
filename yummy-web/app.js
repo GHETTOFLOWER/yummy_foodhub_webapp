@@ -1269,7 +1269,11 @@ function clearMenuImagePreview() {
 
 async function submitMenuItem(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target.closest('form');
+  if (!form) {
+    console.error('Menu item form not found');
+    return;
+  }
   const submit = form.querySelector('[type="submit"]');
   const errorMessage = form.querySelector('#menu-item-form-error');
   const values = new FormData(form);
