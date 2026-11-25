@@ -5,6 +5,8 @@ HIGHER LEVEL Restaurant & Takeaway Uganda is a food ordering and delivery platfo
 ## Features
 
 - Customers can register, sign in, browse and search the menu, place takeaway or delivery orders, and track order history.
+- The menu includes soft drinks, fresh juices, tea, coffee, and mineral water in the Beverages category.
+- Customers can leave one 1-to-5-star review for each meal they have purchased and fulfilled, with an optional comment. Menu cards show each item's average rating and review count.
 - Customers can place orders immediately or schedule them for a future date and time in East Africa Time.
 - Customers can submit catering requests for eight event types and review their request statuses.
 - Each fixed menu item has a read-only recipe and preparation section, separate from its concise menu description.
@@ -26,7 +28,8 @@ yummy-food-hub-webapp/
 │   ├── delivery-claim-migration.sql
 │   ├── scheduled-order-migration.sql
 │   ├── catering-migration.sql
-│   └── legacy-data-cleanup-migration.sql
+│   ├── legacy-data-cleanup-migration.sql
+│   └── food-reviews-migration.sql
 └── yummy-web/
     ├── app.js
     ├── index.html
@@ -44,11 +47,12 @@ Apply the migrations in order:
 3. `yummy-backend/legacy-data-cleanup-migration.sql`
 4. `yummy-backend/catering-migration.sql`
 5. `yummy-backend/scheduled-order-migration.sql`
+6. `yummy-backend/food-reviews-migration.sql`
 
 The cleanup migration removes legacy menu and order fields and an unused table. Back up the database before applying it.
 Scheduled order timestamps are stored as UTC in `orders.scheduled_for`; the checkout and customer views display them in East Africa Time.
 
-The customer menu uses the categories Main Courses, Local Favorites, Breakfast, Beverages, Special Meals, and Side Dishes; categories without current dishes show an empty state. The server preserves existing stock and order history, and creates a missing `image_url` column when needed. Recipe and preparation details are provided read-only for the fixed menu.
+The customer menu uses the categories Main Courses, Local Favorites, Breakfast, Beverages, Special Meals, and Side Dishes. Beverage prices are seeded in UGX by the backend. The server preserves existing stock and order history, and creates a missing `image_url` column when needed. Recipe and preparation details are provided read-only for the fixed food menu.
 
 ### Accounts and roles
 
@@ -86,6 +90,7 @@ Open `http://localhost:3107`. The health endpoint is `http://localhost:3107/api/
 - `GET /api/health` — service health
 - `POST /register`, `POST /login`, `POST /logout` — account access
 - `GET /menu` — standard menu
+- `POST /food-reviews` — submit a 1-to-5-star review for a fulfilled purchase
 - `POST /order` — place an order
 - `GET /orders/:userId` — signed-in customer's order history, scheduled order details, and tracking
 - `GET /catering-requests`, `POST /catering-requests` — customer catering requests and status history

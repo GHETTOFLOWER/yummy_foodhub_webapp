@@ -744,6 +744,23 @@ input:focus-visible {
   margin: 8px 0 13px;
   min-height: 38px;
 }
+.food-rating {
+  color: #a96813;
+  font-size: 11px;
+  font-weight: 700;
+  margin: -5px 0 13px;
+}
+.beverage-photo {
+  align-items: center;
+  background: linear-gradient(135deg, #f8e9ff, #fff2dd);
+  display: flex;
+  justify-content: center;
+}
+.beverage-illustration {
+  font-size: 66px;
+  position: relative;
+  z-index: 1;
+}
 .recipe-details {
   border-top: 1px solid var(--line);
   color: var(--muted);
@@ -976,6 +993,7 @@ input:focus-visible {
   align-items: start;
   border-top: 1px solid #f0e7f4;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   justify-content: space-between;
   padding: 8px 0;
@@ -988,6 +1006,15 @@ input:focus-visible {
   display: block;
   font-size: 9px;
   margin-top: 3px;
+}
+.review-action {
+  font-size: 10px;
+  margin-left: auto;
+  padding: 5px 9px;
+}
+.saved-review {
+  color: #8a5b18 !important;
+  flex-basis: 100%;
 }
 .staff-customer {
   color: #61655b;
@@ -1346,6 +1373,54 @@ input:focus-visible {
   overflow-y: auto;
   padding: 26px;
   width: min(100%, 465px);
+}
+.food-review-form {
+  display: grid;
+  gap: 18px;
+  padding-top: 22px;
+}
+.review-meal-name {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+.review-rating-field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.review-rating-field legend {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.review-rating-options {
+  display: flex;
+  gap: 8px;
+}
+.review-rating-options label {
+  cursor: pointer;
+  font-size: 32px;
+  line-height: 1;
+}
+.review-rating-options input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+.review-rating-options span {
+  color: #d8d0dc;
+}
+.review-rating-options label.selected span,
+.review-rating-options label:hover span,
+.review-rating-options input:focus-visible + span {
+  color: #e5a82f;
+}
+.food-review-form .drawer-footer {
+  padding: 0;
 }
 @keyframes drawer-in {
   from {

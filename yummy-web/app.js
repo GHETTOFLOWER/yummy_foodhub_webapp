@@ -102,7 +102,7 @@ function getDefaultMenu(menuItems) {
   if (menu.length !== defaultMenuTitles.length) {
     throw new Error(`The food menu is incomplete (${menu.length}/${defaultMenuTitles.length} items).`);
   }
-  return menu;
+  return [...menu, ...menuItems.filter((item) => item.category === 'Beverages')];
 }
 
 function readStorage(key) {
@@ -435,14 +435,17 @@ async function renderPage() {
 
 function renderFoodCard(item, index) {
   const outOfStock = Number(item.stock_quantity) <= 0;
-  const imageUrl = item.image_url || imageChoices[index % imageChoices.length];
+  const imageUrl = item.image_url || (item.category === 'Beverages' ? '' : imageChoices[index % imageChoices.length]);
   const recipe = Array.isArray(item.recipe_steps) && item.recipe_steps.length
     ? `<details class="recipe-details"><summary>Recipe &amp; Preparation</summary><ol>${item.recipe_steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`
     : '';
+  const rating = Number(item.average_rating) || 0;
+  const reviewCount = Number(item.review_count) || 0;
   return `<article class="food-card">
-      <div class="food-photo"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy"><span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
+      <div class="food-photo ${imageUrl ? '' : 'beverage-photo'}">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.title)}" loading="lazy">` : '<span class="beverage-illustration" aria-hidden="true">🥤</span>'}<span class="food-tag">${escapeHtml(item.category || 'Menu Item')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-description">${escapeHtml(item.description || 'Description unavailable.')}</p>
+      <p class="food-rating" aria-label="${rating.toFixed(1)} out of 5 stars, ${reviewCount} reviews">⭐ ${rating.toFixed(1)} (${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'})</p>
       ${recipe}
       <div class="food-footer"><span class="stock-label ${outOfStock ? 'out' : ''}">${outOfStock ? 'Out of stock' : `In stock · ${Number(item.stock_quantity)} available`}</span>
       <button class="add-button" data-action="add" data-id="${escapeHtml(item.id)}"><span aria-hidden="true">+</span> ${outOfStock ? 'Request order' : 'Add to Cart'}</button></div></div>
@@ -618,7 +621,16 @@ function renderOrders() {
       const items = (order.items || [])
         .map((item) => {
           const status = String(item.item_status || order.status || 'pending').toLowerCase();
-          return `<div class="order-line"><span>${item.quantity} × ${escapeHtml(item.title)}</span><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span></div>`;
+          const orderStatus = String(order.status || '').toLowerCase();
+          const pickedUpScheduledOrder = order.delivery_type === 'pickup' && orderStatus === 'completed' &&
+            (order.status_history || []).some((entry) => entry.status === 'picked_up');
+          const canReview = orderStatus === 'delivered' || orderStatus === 'picked_up' || pickedUpScheduledOrder;
+          const reviewControl = canReview
+            ? item.review
+              ? `<small class="saved-review">Your review: ${Number(item.review.rating)} ★${item.review.comment ? ` · ${escapeHtml(item.review.comment)}` : ''}</small>`
+              : `<button class="table-action review-action" data-action="review-item" data-id="${escapeHtml(item.item_id)}" data-title="${escapeHtml(item.title)}">Rate meal</button>`
+            : '';
+          return `<div class="order-line"><span>${item.quantity} × ${escapeHtml(item.title)}</span><span class="status-pill ${escapeHtml(status)}">${escapeHtml(status)}</span>${reviewControl}</div>`;
         })
         .join('');
       const date = order.created_at
@@ -940,6 +952,16 @@ function renderCart() {
 
 function closeCart() {
   document.querySelector('#modal-root').innerHTML = '';
+}
+
+function openFoodReview(itemId, title) {
+  const modal = document.querySelector('#modal-root');
+  const template = document.querySelector('#food-review-template');
+  modal.replaceChildren(template.content.cloneNode(true));
+  const form = modal.querySelector('#food-review-form');
+  form.dataset.itemId = itemId;
+  modal.querySelector('#review-meal-name').textContent = title;
+  modal.querySelector('input[name="rating"]').focus();
 }
 
 async function placeOrder(button) {
@@ -1270,6 +1292,7 @@ document.querySelector('#page-content').addEventListener('click', (event) => {
   }
   const { action, id } = target.dataset;
   if (action === 'add') addToCart(id);
+  if (action === 'review-item') openFoodReview(id, target.dataset.title);
   if (action === 'scroll-to-menu') document.querySelector('#menu-section')?.scrollIntoView({ behavior: 'smooth' });
   if (action === 'schedule-order') {
     if (!state.cart.length) {
@@ -1348,6 +1371,39 @@ document.querySelector('#modal-root').addEventListener('click', (event) => {
     renderCart();
   }
   if (target.dataset.action === 'checkout') placeOrder(target);
+});
+document.querySelector('#modal-root').addEventListener('submit', async (event) => {
+  if (event.target.id !== 'food-review-form') return;
+  event.preventDefault();
+  const form = event.target;
+  const submit = form.querySelector('[type="submit"]');
+  const error = form.querySelector('.drawer-message');
+  submit.disabled = true;
+  error.textContent = '';
+  try {
+    const formData = new FormData(form);
+    await api('/food-reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        menu_item_id: Number(form.dataset.itemId),
+        rating: Number(formData.get('rating')),
+        comment: formData.get('comment'),
+      }),
+    });
+    closeCart();
+    showToast('Thanks for sharing your review');
+    await renderPage();
+  } catch (requestError) {
+    error.textContent = requestError.message;
+    submit.disabled = false;
+  }
+});
+document.querySelector('#modal-root').addEventListener('change', (event) => {
+  if (event.target.name !== 'rating') return;
+  const selectedRating = Number(event.target.value);
+  event.target.closest('.review-rating-options').querySelectorAll('label').forEach((label) => {
+    label.classList.toggle('selected', Number(label.querySelector('input').value) <= selectedRating);
+  });
 });
 document.querySelectorAll('#app-view [data-page], #app-view [data-section]').forEach((control) =>
   control.addEventListener('click', (event) => {

@@ -155,5 +155,38 @@
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="modal-root" data-schedule-timezone="Africa/Kampala"></div>
+    <template id="food-review-template">
+      <div class="cart-overlay" data-action="overlay-close">
+        <section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="review-title">
+          <div class="drawer-head">
+            <div>
+              <p class="eyebrow">YOUR FEEDBACK</p>
+              <h2 id="review-title">Rate this meal</h2>
+            </div>
+            <button class="close-button" data-action="close-cart" aria-label="Close review form">×</button>
+          </div>
+          <form id="food-review-form" class="food-review-form">
+            <p id="review-meal-name" class="review-meal-name"></p>
+            <fieldset class="review-rating-field">
+              <legend>Your rating</legend>
+              <div class="review-rating-options">
+                <label><input type="radio" name="rating" value="1" required aria-label="1 star"><span>★</span></label>
+                <label><input type="radio" name="rating" value="2" required aria-label="2 stars"><span>★</span></label>
+                <label><input type="radio" name="rating" value="3" required aria-label="3 stars"><span>★</span></label>
+                <label><input type="radio" name="rating" value="4" required aria-label="4 stars"><span>★</span></label>
+                <label><input type="radio" name="rating" value="5" required aria-label="5 stars"><span>★</span></label>
+              </div>
+            </fieldset>
+            <label class="checkout-field" for="review-comment">Comment (optional)
+              <textarea id="review-comment" name="comment" maxlength="2000" rows="4" placeholder="How was your meal?"></textarea>
+            </label>
+            <div class="drawer-footer">
+              <p class="drawer-message" role="alert"></p>
+              <button class="button button-dark" type="submit">Submit review</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </template>
   </body>
 </html>

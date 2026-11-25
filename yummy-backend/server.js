@@ -31,7 +31,7 @@ const cateringEventTypes = new Set([
   'custom_event',
 ]);
 const defaultMenuSeedName = 'ugandan-dishes';
-const defaultMenuSeedVersion = 6;
+const defaultMenuSeedVersion = 7;
 const defaultMenuDishes = [
   { title: 'Boiled Cassava & Beef-Pea Stew', category: 'Local Favorites', price: 13000, description: 'Boiled cassava with beef and green pea stew, served with seasonal greens.', recipeSteps: ['Boil cassava until tender.', 'Simmer beef and green peas in a seasoned stew; serve with greens.'], imageUrl: './images/Boiled Cassava & Beef-Pea Stew.jpeg' },
   { title: 'Flaky Ugandan Chapati', category: 'Side Dishes', price: 3000, description: 'Ugandan chapati, crisp outside and soft inside.', recipeSteps: ['Prepare and rest a soft wheat dough.', 'Roll into layers and pan-fry until golden.'], imageUrl: './images/Chapati.jpeg' },
@@ -47,6 +47,21 @@ const defaultMenuDishes = [
   { title: 'Posho, Beans & Okra Stew with Doodo', category: 'Main Courses', price: 7000, description: 'Posho served with seasoned beans, okra stew, and steamed doodo greens.', recipeSteps: ['Simmer beans and okra with seasoning until tender.', 'Serve with posho and steamed doodo.'], imageUrl: './images/Posho,Beans & Okra Stew with Doodo.jpeg' },
   { title: 'Steamed Rice, Fish Stew & Fresh Fruit Juice', category: 'Main Courses', price: 19000, description: 'Steamed rice served with tilapia stew, greens, and fresh fruit juice.', recipeSteps: ['Steam rice and prepare tilapia stew with greens.', 'Serve with fresh fruit juice.'], imageUrl: './images/Steamed Ric,Fish Stew & Fresh Fruit Juice.jpeg' },
   { title: 'Whole Fried Tilapia and Chips', category: 'Special Meals', price: 25000, description: 'Whole fried tilapia served with golden chips, fresh vegetables, and lime.', recipeSteps: ['Season and fry tilapia until cooked through.', 'Serve with chips, fresh vegetables, and lime.'], imageUrl: './images/Whole Fried Tilapia and Chips.jpeg' },
+  { title: 'Coca-Cola', category: 'Beverages', price: 3000, description: 'Chilled Coca-Cola.', imageUrl: null },
+  { title: 'Fanta Orange', category: 'Beverages', price: 3000, description: 'Chilled Fanta Orange.', imageUrl: null },
+  { title: 'Sprite', category: 'Beverages', price: 3000, description: 'Chilled Sprite.', imageUrl: null },
+  { title: 'Stoney Tangawizi', category: 'Beverages', price: 3000, description: 'Chilled ginger-flavoured Stoney Tangawizi.', imageUrl: null },
+  { title: 'Pepsi', category: 'Beverages', price: 3000, description: 'Chilled Pepsi.', imageUrl: null },
+  { title: 'Mountain Dew', category: 'Beverages', price: 3000, description: 'Chilled Mountain Dew.', imageUrl: null },
+  { title: 'Fresh Mango Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared mango juice.', imageUrl: null },
+  { title: 'Fresh Orange Juice', category: 'Beverages', price: 5000, description: 'Freshly prepared orange juice.', imageUrl: null },
+  { title: 'Passion Fruit Juice', category: 'Beverages', price: 5000, description: 'Fresh passion fruit juice.', imageUrl: null },
+  { title: 'Watermelon Juice', category: 'Beverages', price: 5000, description: 'Fresh watermelon juice.', imageUrl: null },
+  { title: 'Pineapple Juice', category: 'Beverages', price: 5000, description: 'Fresh pineapple juice.', imageUrl: null },
+  { title: 'Mixed Tropical Juice', category: 'Beverages', price: 6000, description: 'A refreshing blend of tropical fruit juices.', imageUrl: null },
+  { title: 'African Tea', category: 'Beverages', price: 3000, description: 'Traditional African tea.', imageUrl: null },
+  { title: 'Black Coffee', category: 'Beverages', price: 4000, description: 'Freshly brewed black coffee.', imageUrl: null },
+  { title: 'Mineral Water', category: 'Beverages', price: 2000, description: 'Bottled mineral water.', imageUrl: null },
 ];
 
 function getDefaultMenuRows(rows) {
@@ -264,7 +279,7 @@ async function attachOrderItems(orders) {
   for (const order of orders) {
     const [items] = await pool.query(
       `SELECT oi.id AS order_item_id, oi.quantity, oi.price, oi.status AS item_status,
-         mi.title
+         oi.item_id, mi.title
        FROM order_items oi JOIN menu_items mi ON mi.id = oi.item_id
        WHERE oi.order_id = ? ORDER BY oi.id`,
       [order.id],
@@ -612,12 +627,79 @@ app.get('/menu', async (req, res) => {
   try {
     await ensureDefaultMenuSeeded();
     const [rows] = await pool.query(
-      'SELECT mi.* FROM menu_items mi ORDER BY mi.category, mi.title, mi.id',
+      `SELECT mi.*, COALESCE(review_summary.average_rating, 0) AS average_rating,
+         COALESCE(review_summary.review_count, 0) AS review_count
+       FROM menu_items mi
+       LEFT JOIN (
+         SELECT menu_item_id, ROUND(AVG(rating), 1) AS average_rating, COUNT(*) AS review_count
+         FROM food_reviews
+         GROUP BY menu_item_id
+       ) review_summary ON review_summary.menu_item_id = mi.id
+       ORDER BY mi.category, mi.title, mi.id`,
     );
     res.json(getDefaultMenuRows(rows));
   } catch (err) {
     console.error('MENU ERROR:', err.message);
     res.status(500).json({ error: 'Could not load the food menu: ' + err.message });
+  }
+});
+
+app.post('/food-reviews', requireAuth, requireRole('customer'), async (req, res) => {
+  const menuItemId = Number(req.body.menu_item_id);
+  const rating = Number(req.body.rating);
+  const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : '';
+  if (!Number.isSafeInteger(menuItemId) || menuItemId < 1) {
+    return res.status(400).json({ error: 'Select a valid menu item to review.' });
+  }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'Choose a rating from 1 to 5 stars.' });
+  }
+  if (comment.length > 2000) {
+    return res.status(400).json({ error: 'Review comments must be 2,000 characters or fewer.' });
+  }
+
+  try {
+    const [[purchase]] = await pool.query(
+      `SELECT oi.id
+       FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       WHERE o.user_id = ? AND oi.item_id = ?
+         AND oi.status IN ('approved', 'completed')
+         AND (
+           (o.delivery_type = 'delivery' AND o.status = 'delivered')
+           OR (
+             o.delivery_type = 'pickup'
+             AND (
+               o.status = 'picked_up'
+               OR (
+                 o.status = 'completed'
+                 AND EXISTS (
+                   SELECT 1 FROM order_status_history osh
+                   WHERE osh.order_id = o.id AND osh.status = 'picked_up'
+                 )
+               )
+             )
+           )
+         )
+       LIMIT 1`,
+      [req.user.id, menuItemId],
+    );
+    if (!purchase) {
+      return res.status(403).json({ error: 'You can review a meal after it has been purchased and fulfilled.' });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO food_reviews (user_id, menu_item_id, rating, comment)
+       VALUES (?, ?, ?, ?)`,
+      [req.user.id, menuItemId, rating, comment || null],
+    );
+    res.status(201).json({ id: result.insertId, menu_item_id: menuItemId, rating, comment: comment || null });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'You have already reviewed this menu item.' });
+    }
+    console.error('FOOD REVIEW ERROR:', err.message);
+    res.status(500).json({ error: 'Could not save your review: ' + err.message });
   }
 });
 
@@ -771,7 +853,18 @@ app.get('/orders/:userId', requireAuth, async (req, res) => {
        ORDER BY o.created_at DESC`,
       [req.params.userId],
     );
-    res.json(await attachDeliveryProgress(await attachOrderItems(orders)));
+    const attachedOrders = await attachOrderItems(orders);
+    const [reviews] = await pool.query(
+      'SELECT menu_item_id, rating, comment FROM food_reviews WHERE user_id = ?',
+      [req.user.id],
+    );
+    const reviewByItem = new Map(reviews.map((review) => [Number(review.menu_item_id), review]));
+    for (const order of attachedOrders) {
+      for (const item of order.items) {
+        item.review = reviewByItem.get(Number(item.item_id)) || null;
+      }
+    }
+    res.json(await attachDeliveryProgress(attachedOrders));
   } catch (err) {
     console.error('ORDERS ERROR:', err.message);
     res.status(500).json({ error: 'Could not load orders: ' + err.message });
