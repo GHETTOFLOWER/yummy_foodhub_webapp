@@ -437,9 +437,9 @@ function createMenuWorkflowRouter({
           return res.status(404).json({ error: 'Menu item not found.' });
         }
         return res.json({ id, status: 'approved' });
-      }
+      }else{
       const request = await data.requestChange(req.user.id, id, 'edit', parsed.value);
-      return res.status(202).json({ request, status: request.status });
+      return res.status(202).json({ request, status: request.status });}
     } catch (error) {
       return handleError(res, error, 'MENU ITEM UPDATE ERROR');
     }
