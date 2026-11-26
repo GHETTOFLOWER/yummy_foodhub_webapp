@@ -16,6 +16,7 @@ Higher Level is a restaurant ordering and operations website built with Node.js,
 - Responsive Contact Us section, WhatsApp actions, and Google Maps directions
 - Restaurant dashboard
 - Staff menu-change approval workflow
+- Persistent customer, rider, staff, and administrator notifications with unread counts and read controls
 - Local menu-image upload with separate gallery/files and camera selection, plus image preview
 
 ## User roles
@@ -84,15 +85,19 @@ The repository expects the existing application schema, including the user, menu
 
 1. `yummy-backend/food-reviews-migration.sql`
 2. `yummy-backend/menu-approval-migration.sql`
+3. `yummy-backend/notifications-migration.sql`
 
 For example, from the repository root:
 
 ```powershell
 mysql -h $env:DB_HOST -P $env:DB_PORT -u $env:DB_USER -p $env:DB_NAME < .\yummy-backend\food-reviews-migration.sql
 mysql -h $env:DB_HOST -P $env:DB_PORT -u $env:DB_USER -p $env:DB_NAME < .\yummy-backend\menu-approval-migration.sql
+mysql -h $env:DB_HOST -P $env:DB_PORT -u $env:DB_USER -p $env:DB_NAME < .\yummy-backend\notifications-migration.sql
 ```
 
 The food-review migration creates `food_reviews`. The menu-approval migration creates `menu_change_requests` and `menu_change_request_history` for request and reviewer audit history. It expects `menu_items.is_active` to exist already; this column is present in the current database. Workflow foreign-key IDs use `INT UNSIGNED` to match the existing `menu_items` and `users` IDs. Run each migration once against the intended database; back up existing data before schema changes.
+
+The notifications migration creates `notifications`, storing a recipient, notification type and text, related record, creation time, read time, and an optional unique deduplication key. It uses a foreign key to `users` and indexes recipient history and unread lookups. The app creates database-backed notifications for customer order updates, rider delivery updates, new orders and catering/menu requests for staff and administrators, low stock, and approaching scheduled orders. Low stock uses the existing inventory threshold of 5 or fewer units; scheduled-order alerts are sent within 30 minutes of the scheduled time. Notification APIs require sign-in, and each user can only list or mark their own notifications as read.
 
 The server seeds its standard menu and beverages on startup. Menu items added through menu management are stored in MySQL and are not restricted to the standard seed list. Approved deletions deactivate items rather than removing records, preserving order references and history.
 
@@ -129,7 +134,7 @@ Run the backend tests from the repository root:
 npm --prefix yummy-backend test
 ```
 
-The tests exercise the HTTP workflow for staff dish and beverage edits/deletions, administrator review and approval, immediate administrator dish and beverage changes, authorization, input validation, schema-health reporting, image uploads from gallery/files/camera sources, served image bytes, and re-fetching saved menu state. They use an in-memory repository and do not require a MySQL service; the SQL schema-health query shape is also checked with a test pool. For a live database check, apply the migrations to a dedicated test database and call `GET /admin/menu-change-requests/health` while signed in as an administrator.
+The tests exercise the HTTP workflow for staff dish and beverage edits/deletions, administrator review and approval, immediate administrator dish and beverage changes, authorization, input validation, schema-health reporting, image uploads from gallery/files/camera sources, served image bytes, re-fetching saved menu state, notification recipients and event types, unread counts, and read-all/read-one behavior. They use in-memory repositories and do not require a MySQL service. For a live database check, apply the migrations to a dedicated test database and call `GET /admin/menu-change-requests/health` while signed in as an administrator.
 
 On a real phone or tablet, verify both image controls separately: select an image using the gallery/files chooser, then select **Take a photo** and grant camera access. Confirm the preview before saving and verify the resulting image appears after an administrator approves the menu change. Browser automation can verify upload handling but cannot substitute for device camera permission and hardware testing.
 
@@ -145,6 +150,8 @@ On a real phone or tablet, verify both image controls separately: select an imag
 - `GET /admin/menu-change-requests` — administrator list of pending menu requests
 - `GET /admin/menu-change-requests/health` — administrator-only workflow schema check
 - `PUT /admin/menu-change-requests/:id` — approve or reject a pending request
+- `GET /notifications` — current user's recent notifications and unread count
+- `PUT /notifications/:id/read`; `PUT /notifications/read-all` — mark notifications as read
 - `GET /inventory`, `PUT /inventory/:id` — inventory operations
 - `GET /admin/dashboard` — restaurant operations summary
 - Catering, staff order, rider, delivery, and tracking routes are available in `yummy-backend/server.js`.
@@ -156,3 +163,4 @@ On a real phone or tablet, verify both image controls separately: select an imag
 - Added the restaurant Contact Us section, phone and WhatsApp actions, and responsive map.
 - Added the staff menu approval workflow, administrator review page, audit history, and local image upload with distinct gallery/files and camera controls.
 - Added staff-facing form and API diagnostics, server request/error logs, and an administrator-only workflow schema health endpoint.
+- Added database-backed notifications, a role-aware notification bell with an unread badge, read controls, and 10-second notification refresh.

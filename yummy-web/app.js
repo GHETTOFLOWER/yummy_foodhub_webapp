@@ -4,6 +4,11 @@ const state = {
   menu: [],
   inventory: [],
   orders: [],
+  notifications: [],
+  unreadNotificationCount: 0,
+  notificationPanelOpen: false,
+  notificationRefreshInFlight: false,
+  notificationError: '',
   staffOrders: [],
   deliveryOrders: [],
   riders: [],
@@ -173,6 +178,85 @@ async function api(path, options = {}) {
   return data;
 }
 
+function renderNotifications() {
+  const badge = document.querySelector('#notification-count');
+  badge.textContent = state.unreadNotificationCount > 99 ? '99+' : String(state.unreadNotificationCount);
+  badge.classList.toggle('hidden', state.unreadNotificationCount === 0);
+  document.querySelector('#notification-toggle').setAttribute(
+    'aria-label',
+    state.unreadNotificationCount
+      ? `Notifications, ${state.unreadNotificationCount} unread`
+      : 'Notifications',
+  );
+  const markAll = document.querySelector('#mark-all-notifications');
+  markAll.disabled = state.unreadNotificationCount === 0;
+  const list = document.querySelector('#notification-list');
+  if (state.notificationError) {
+    list.innerHTML = `<p class="notification-empty">${escapeHtml(state.notificationError)}</p>`;
+    return;
+  }
+  if (!state.notifications.length) {
+    list.innerHTML = '<p class="notification-empty">You have no notifications yet.</p>';
+    return;
+  }
+  list.innerHTML = state.notifications.map((notification) => `
+    <article class="notification-item ${notification.read_at ? '' : 'unread'}">
+      <div class="notification-copy">
+        <strong>${escapeHtml(notification.title)}</strong>
+        <p>${escapeHtml(notification.message)}</p>
+        <time>${escapeHtml(formatDateTime(notification.created_at))}</time>
+      </div>
+      ${notification.read_at ? '' : `<button class="notification-read-button" type="button" data-notification-read="${escapeHtml(notification.id)}">Mark read</button>`}
+    </article>
+  `).join('');
+}
+
+async function refreshNotifications() {
+  if (!state.user || !readStorage('yummy-token') || state.notificationRefreshInFlight) return;
+  state.notificationRefreshInFlight = true;
+  try {
+    const result = await api('/notifications');
+    state.notifications = result.notifications;
+    state.unreadNotificationCount = Number(result.unreadCount) || 0;
+    state.notificationError = '';
+    renderNotifications();
+  } catch (error) {
+    state.notificationError = error.message;
+    console.error('NOTIFICATION REFRESH ERROR:', error.message);
+    if (state.notificationPanelOpen) renderNotifications();
+  } finally {
+    state.notificationRefreshInFlight = false;
+  }
+}
+
+async function markNotificationRead(notificationId) {
+  try {
+    await api(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PUT' });
+    const notification = state.notifications.find((item) => String(item.id) === String(notificationId));
+    if (notification && !notification.read_at) {
+      notification.read_at = new Date().toISOString();
+      state.unreadNotificationCount = Math.max(0, state.unreadNotificationCount - 1);
+    }
+    renderNotifications();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await api('/notifications/read-all', { method: 'PUT' });
+    const readAt = new Date().toISOString();
+    state.notifications.forEach((notification) => {
+      if (!notification.read_at) notification.read_at = readAt;
+    });
+    state.unreadNotificationCount = 0;
+    renderNotifications();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function showToast(message) {
   const toast = document.querySelector('#toast');
   toast.textContent = message;
@@ -241,6 +325,10 @@ function showApp() {
   state.pageHistory = [];
   setActiveNav();
   document.querySelector('#current-year').textContent = new Date().getFullYear();
+  state.notificationPanelOpen = false;
+  document.querySelector('#notification-panel').classList.add('hidden');
+  document.querySelector('#notification-toggle').setAttribute('aria-expanded', 'false');
+  refreshNotifications();
   renderPage();
 }
 
@@ -1501,11 +1589,26 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
   if (state.user) writeStorage(`yummy-cart-${state.user.id}`, state.cart);
   state.user = null;
   state.cart = [];
+  state.notifications = [];
+  state.unreadNotificationCount = 0;
+  state.notificationPanelOpen = false;
+  renderNotifications();
   writeStorage('yummy-user', null);
   writeStorage('yummy-token', null);
   syncCart();
   closeCart();
   showAuth();
+});
+document.querySelector('#notification-toggle').addEventListener('click', () => {
+  state.notificationPanelOpen = !state.notificationPanelOpen;
+  document.querySelector('#notification-panel').classList.toggle('hidden', !state.notificationPanelOpen);
+  document.querySelector('#notification-toggle').setAttribute('aria-expanded', String(state.notificationPanelOpen));
+  if (state.notificationPanelOpen) refreshNotifications();
+});
+document.querySelector('#notification-panel').addEventListener('click', (event) => {
+  const readButton = event.target.closest('[data-notification-read]');
+  if (readButton) markNotificationRead(readButton.dataset.notificationRead);
+  if (event.target.closest('#mark-all-notifications')) markAllNotificationsRead();
 });
 document.querySelector('#cart-open').addEventListener('click', renderCart);
 document.querySelector('#back-button').addEventListener('click', goBack);
@@ -1752,6 +1855,7 @@ async function refreshLivePageData() {
 }
 
 window.setInterval(refreshLivePageData, 10000);
+window.setInterval(refreshNotifications, 10000);
 
 if (state.user && state.user.id && readStorage('yummy-token')) {
   state.cart = readStorage(`yummy-cart-${state.user.id}`) || [];

@@ -119,6 +119,19 @@
             <button class="nav-link" data-page="rider-dashboard">My Deliveries</button>
           </nav>
           <div class="header-account">
+            <div class="notification-widget">
+              <button id="notification-toggle" class="notification-toggle" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-panel">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+                <span id="notification-count" class="notification-count hidden">0</span>
+              </button>
+              <section id="notification-panel" class="notification-panel hidden" aria-label="Notifications">
+                <div class="notification-panel-heading">
+                  <strong>Notifications</strong>
+                  <button id="mark-all-notifications" class="text-button" type="button">Mark all as read</button>
+                </div>
+                <div id="notification-list" class="notification-list"></div>
+              </section>
+            </div>
             <button id="cart-open" class="cart-button" type="button">
               <span class="cart-bag" aria-hidden="true">▱</span> Cart
               <span class="cart-count" id="cart-count">0</span>

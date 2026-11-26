@@ -93,7 +93,7 @@ function isValidImage(buffer, mimeType) {
   return false;
 }
 
-function createSqlMenuWorkflowRepository(pool) {
+function createSqlMenuWorkflowRepository(pool, onRequestSubmitted = async () => {}) {
   async function insertRequest(connection, request) {
     const [result] = await connection.query(
       `INSERT INTO menu_change_requests
@@ -217,13 +217,17 @@ function createSqlMenuWorkflowRepository(pool) {
 
     async requestCreate(userId, data) {
       const connection = await pool.getConnection();
-      return finishTransaction(connection, (transaction) => insertRequest(transaction, {
-        menu_item_id: null,
-        action_type: 'create',
-        proposed_data: data,
-        status: 'pending_create',
-        requested_by: userId,
-      }));
+      return finishTransaction(connection, async (transaction) => {
+        const request = await insertRequest(transaction, {
+          menu_item_id: null,
+          action_type: 'create',
+          proposed_data: data,
+          status: 'pending_create',
+          requested_by: userId,
+        });
+        await onRequestSubmitted(transaction, request);
+        return request;
+      });
     },
 
     async requestChange(userId, itemId, actionType, data) {
@@ -252,13 +256,15 @@ function createSqlMenuWorkflowRepository(pool) {
               image_url: items[0].image_url || null,
             }
           : data;
-        return insertRequest(transaction, {
+        const request = await insertRequest(transaction, {
           menu_item_id: itemId,
           action_type: actionType,
           proposed_data: proposedData,
           status: actionType === 'edit' ? 'pending_edit' : 'pending_delete',
           requested_by: userId,
         });
+        await onRequestSubmitted(transaction, request);
+        return request;
       });
     },
 
@@ -335,6 +341,7 @@ function createMenuWorkflowRouter({
   pool,
   requireAuth,
   requireRole,
+  onRequestSubmitted,
   uploadDirectory = path.resolve(__dirname, '..', 'yummy-web', 'images', 'uploads'),
   logger = console,
 }) {
@@ -342,7 +349,7 @@ function createMenuWorkflowRouter({
   if (typeof requireAuth !== 'function' || typeof requireRole !== 'function') {
     throw new Error('Menu workflow authentication middleware is required.');
   }
-  const data = repository || createSqlMenuWorkflowRepository(pool);
+  const data = repository || createSqlMenuWorkflowRepository(pool, onRequestSubmitted);
   fs.mkdirSync(uploadDirectory, { recursive: true });
 
   const storage = multer.diskStorage({

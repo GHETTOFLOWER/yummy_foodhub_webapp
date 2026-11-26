@@ -5,6 +5,14 @@ const mysql = require('mysql2/promise');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const { createMenuWorkflowRouter } = require('./menu-workflow');
+const {
+  createNotificationRouter,
+  notifyApproachingScheduledOrders,
+  notifyLowStock,
+  notifyOrderStatus,
+  notifyRoles,
+  notifyUser,
+} = require('./notification-system');
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
@@ -204,7 +212,20 @@ function requireRole(...roles) {
   };
 }
 
-app.use(createMenuWorkflowRouter({ pool, requireAuth, requireRole }));
+app.use(createMenuWorkflowRouter({
+  pool,
+  requireAuth,
+  requireRole,
+  onRequestSubmitted: (connection, request) => notifyRoles(connection, ['admin', 'staff'], {
+    type: 'menu_change_request',
+    title: 'New menu change request',
+    message: `A staff member submitted a menu ${request.action_type} request.`,
+    entityType: 'menu_change_request',
+    entityId: request.id,
+    dedupeKey: `menu-change-request-${request.id}`,
+  }),
+}));
+app.use(createNotificationRouter({ pool, requireAuth }));
 
 function validateCateringRequest(body) {
   const eventType = String(body.event_type || '').trim();
@@ -361,6 +382,7 @@ async function refreshOrderStatus(connection, orderId, changedBy = null) {
       'INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)',
       [orderId, status, changedBy],
     );
+    await notifyOrderStatus(connection, orderId, status);
   }
   return status;
 }
@@ -368,7 +390,7 @@ async function refreshOrderStatus(connection, orderId, changedBy = null) {
 async function setOrderLineStatus(connection, lineId, status, changedBy) {
   const [rows] = await connection.query(
     `SELECT oi.id, oi.order_id, oi.item_id, oi.quantity, oi.status,
-       mi.stock_quantity
+       mi.title, mi.stock_quantity
      FROM order_items oi JOIN menu_items mi ON mi.id = oi.item_id
      WHERE oi.id = ? FOR UPDATE`,
     [lineId],
@@ -390,6 +412,13 @@ async function setOrderLineStatus(connection, lineId, status, changedBy) {
       line.quantity,
       line.item_id,
     ]);
+    await notifyLowStock(
+      connection,
+      line.item_id,
+      rows[0].title,
+      line.stock_quantity,
+      Number(line.stock_quantity) - Number(line.quantity),
+    );
     await connection.query(`UPDATE order_items SET status = 'approved' WHERE id = ?`, [line.id]);
   } else if (status === 'rejected' && line.status === 'pending') {
     await connection.query(`UPDATE order_items SET status = 'rejected' WHERE id = ?`, [line.id]);
@@ -424,6 +453,7 @@ async function writeOrderStatus(connection, orderId, status, userId) {
     'INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)',
     [orderId, status, userId],
   );
+  await notifyOrderStatus(connection, orderId, status);
 }
 
 async function syncRiderAvailability(connection, riderId) {
@@ -482,7 +512,20 @@ async function advanceDelivery(connection, delivery, nextStatus, userId) {
     [nextStatus, delivery.id],
   );
   await writeOrderStatus(connection, delivery.order_id, nextStatus, userId);
-  if (nextStatus === 'delivered') await syncRiderAvailability(connection, delivery.rider_id);
+  if (nextStatus === 'delivered') {
+    await syncRiderAvailability(connection, delivery.rider_id);
+    const [[rider]] = await connection.query('SELECT user_id FROM delivery_riders WHERE id = ?', [delivery.rider_id]);
+    if (rider) {
+      await notifyUser(connection, rider.user_id, {
+        type: 'delivery_completed',
+        title: 'Delivery completed',
+        message: `Delivery for order #${delivery.order_id} is complete.`,
+        entityType: 'order',
+        entityId: delivery.order_id,
+        dedupeKey: `delivery-completed-${delivery.id}`,
+      });
+    }
+  }
 }
 
 async function updateOrderLifecycle(connection, order, nextStatus, user) {
@@ -813,10 +856,35 @@ app.post('/order', requireAuth, async (req, res) => {
           line.quantity,
           line.itemId,
         ]);
+        const [menuItems] = await connection.query('SELECT title FROM menu_items WHERE id = ?', [line.itemId]);
+        await notifyLowStock(
+          connection,
+          line.itemId,
+          menuItems[0].title,
+          line.stock_quantity,
+          Number(line.stock_quantity) - Number(line.quantity),
+        );
       }
     }
 
     await refreshOrderStatus(connection, orderId);
+    await notifyUser(connection, userId, {
+      type: 'order_received',
+      title: 'Order received',
+      message: `We received your order #${orderId}.`,
+      entityType: 'order',
+      entityId: orderId,
+      dedupeKey: `order-${orderId}-received`,
+    });
+    await notifyRoles(connection, ['admin', 'staff'], {
+      type: 'new_order',
+      title: 'New order arrives',
+      message: `A new order (#${orderId}) has been placed.`,
+      entityType: 'order',
+      entityId: orderId,
+      dedupeKey: `new-order-${orderId}`,
+    });
+    if (status === 'approved') await notifyOrderStatus(connection, orderId, status);
     await connection.commit();
     res.status(201).json({
       orderId,
@@ -917,6 +985,14 @@ app.post('/catering-requests', requireAuth, requireRole('customer'), async (req,
         request.special_requests,
       ],
     );
+    await notifyRoles(pool, ['admin', 'staff'], {
+      type: 'new_catering_request',
+      title: 'New catering request',
+      message: 'A customer submitted a catering request for review.',
+      entityType: 'catering_request',
+      entityId: result.insertId,
+      dedupeKey: `catering-request-${result.insertId}`,
+    });
     res.status(201).json({
       message: 'Catering request submitted for review.',
       request: { id: result.insertId, ...request, status: 'pending' },
@@ -1180,6 +1256,14 @@ app.post('/rider/deliveries/:orderId/accept', requireAuth, requireRole('rider'),
       [order.id, riders[0].id],
     );
     await writeOrderStatus(connection, order.id, 'assigned', req.user.id);
+    await notifyUser(connection, req.user.id, {
+      type: 'delivery_assigned',
+      title: 'Delivery assigned',
+      message: `You accepted delivery for order #${order.id}.`,
+      entityType: 'order',
+      entityId: order.id,
+      dedupeKey: `delivery-assigned-${result.insertId}`,
+    });
     await syncRiderAvailability(connection, riders[0].id);
     await connection.commit();
     res.status(201).json({
@@ -1329,11 +1413,17 @@ app.put('/inventory/:id', requireAuth, requireRole('admin', 'staff'), async (req
     if (!Number.isInteger(quantity) || quantity < 0) {
       return res.status(400).json({ error: 'Stock quantity must be a non-negative whole number' });
     }
+    const [[item]] = await pool.query(
+      'SELECT title, stock_quantity FROM menu_items WHERE id = ? AND is_active = 1',
+      [req.params.id],
+    );
+    if (!item) return res.status(404).json({ error: 'Menu item not found' });
     const [result] = await pool.query('UPDATE menu_items SET stock_quantity = ? WHERE id = ? AND is_active = 1', [
       quantity,
       req.params.id,
     ]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Menu item not found' });
+    await notifyLowStock(pool, req.params.id, item.title, item.stock_quantity, quantity);
     res.json({ id: req.params.id, stock_quantity: quantity });
   } catch (err) {
     console.error('UPDATE STOCK ERROR:', err.message);
@@ -1406,3 +1496,16 @@ app.use(express.static(path.join(__dirname, '..', 'yummy-web')));
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}/`);
 });
+
+let scheduledOrderJobRunning = false;
+setInterval(async () => {
+  if (scheduledOrderJobRunning) return;
+  scheduledOrderJobRunning = true;
+  try {
+    await notifyApproachingScheduledOrders(pool);
+  } catch (error) {
+    console.error('SCHEDULED ORDER NOTIFICATION JOB ERROR:', error.message);
+  } finally {
+    scheduledOrderJobRunning = false;
+  }
+}, 60 * 1000);
